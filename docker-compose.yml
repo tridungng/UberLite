@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  discovery-server:
+    build:
+      context: .
+      dockerfile: discovery-server/Dockerfile
+    ports:
+      - "8761:8761"
+    depends_on: []
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    ports:
+      - "8080:8080"
+    depends_on:
+      - discovery-server
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:8.2.2
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:8.2.2
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+
+  redis:
+    image: redis:7.2
+    ports:
+      - "6379:6379"
+
+# Placeholder Postgres blocks for service-specific databases (one per service). Uncomment and copy when
+# adding a service that needs a DB.
+# postgres-trip-service:
+#   image: postgres:15
+#   environment:
+#     POSTGRES_DB: tripdb
+#     POSTGRES_USER: uberlite
+#     POSTGRES_PASSWORD: changeme
+#   ports:
+#     - "5432:5432"
+#   volumes:
+#     - trip-db-data:/var/lib/postgresql/data
+
+#volumes:
+#  trip-db-data:
+#
+# You can add more service containers as they are developed.

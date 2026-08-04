@@ -1,0 +1,20 @@
+spring:
+  application:
+    name: discovery-server
+server:
+  port: 8761
+
+eureka:
+  client:
+    register-with-eureka: false
+    fetch-registry: false
+
+---
+# Docker profile: point clients at the compose service names
+spring:
+  profiles: docker
+  application:
+    name: discovery-server
+server:
+  port: 8761
+

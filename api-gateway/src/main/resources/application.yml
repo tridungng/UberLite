@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: api-gateway
+server:
+  port: 8080
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+
+# docker profile - point at the discovery-server service in compose
+---
+spring:
+  profiles: docker
+  application:
+    name: api-gateway
+eureka:
+  client:
+    service-url:
+      defaultZone: http://discovery-server:8761/eureka/
+
+# Example commented-out route for trip-service (uncomment and adapt when trip-service is added)
+# spring:
+#   cloud:
+#     gateway:
+#       routes:
+#         - id: trip-service
+#           uri: lb://trip-service
+#           predicates:
+#             - Path=/trips/**
+#           filters:
+#             - StripPrefix=1
