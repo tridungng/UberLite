@@ -1,12 +1,10 @@
 package com.uberlite.common.geo;
 
 import com.uber.h3core.H3Core;
-import com.uber.h3core.util.GeoCoord;
+import com.uber.h3core.util.LatLng;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * Thin wrapper around H3. Exposes only what services need.
@@ -34,12 +32,10 @@ public final class H3Util {
     }
 
     public static List<String> gridDisk(String cellAddr, int k) {
-        Set<String> ring = h3.kRing(cellAddr, k);
-        return ring.stream().collect(Collectors.toList());
+        return h3.gridDisk(cellAddr, k);
     }
 
-    public static GeoCoord cellToLatLng(String cellAddr) {
-        // H3Core provides cellToLatLng(String) returning GeoCoord
+    public static LatLng cellToLatLng(String cellAddr) {
         return h3.cellToLatLng(cellAddr);
     }
 }
