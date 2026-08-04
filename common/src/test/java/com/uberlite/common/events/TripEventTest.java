@@ -1,6 +1,8 @@
 package com.uberlite.common.events;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -13,6 +15,8 @@ public class TripEventTest {
     public void tripEventJsonRoundTrip() throws Exception {
         TripEvent ev = new TripEvent("trip-1", TripState.REQUESTED, TripState.PRICED, Instant.now(), Map.of("k","v"));
         ObjectMapper m = new ObjectMapper();
+        m.registerModule(new JavaTimeModule());
+        m.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         String json = m.writeValueAsString(ev);
         TripEvent ev2 = m.readValue(json, TripEvent.class);
         assertEquals(ev.getTripId(), ev2.getTripId());

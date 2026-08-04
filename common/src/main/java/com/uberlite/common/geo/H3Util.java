@@ -25,20 +25,21 @@ public final class H3Util {
 
     private H3Util() {}
 
-    public static long latLngToCell(double lat, double lon, int resolution) {
-        return h3.latLngToCell(lat, lon, resolution);
+    public static String latLngToCell(double lat, double lon, int resolution) {
+        return h3.latLngToCellAddress(lat, lon, resolution);
     }
 
-    public static long latLngToCell(double lat, double lon) {
+    public static String latLngToCell(double lat, double lon) {
         return latLngToCell(lat, lon, DEFAULT_RESOLUTION);
     }
 
-    public static List<Long> gridDisk(long cell, int k) {
-        Set<Long> ring = h3.kRing(cell, k);
+    public static List<String> gridDisk(String cellAddr, int k) {
+        Set<String> ring = h3.kRing(cellAddr, k);
         return ring.stream().collect(Collectors.toList());
     }
 
-    public static GeoCoord cellToLatLng(long cell) {
-        return h3.cellToLatLng(cell);
+    public static GeoCoord cellToLatLng(String cellAddr) {
+        // H3Core provides cellToLatLng(String) returning GeoCoord
+        return h3.cellToLatLng(cellAddr);
     }
 }
