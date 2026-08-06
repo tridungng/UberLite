@@ -12,7 +12,9 @@ eureka:
 # docker profile - point at the discovery-server service in compose
 ---
 spring:
-  profiles: docker
+  config:
+    activate:
+      on-profile: docker
   application:
     name: api-gateway
 eureka:

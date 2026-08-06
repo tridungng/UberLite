@@ -1,0 +1,60 @@
+spring:
+  application:
+    name: trip-service
+  datasource:
+    url: jdbc:postgresql://localhost:5433/tripdb
+    username: uberlite
+    password: changeme
+  flyway:
+    enabled: true
+    default-schema: trip
+    schemas: trip
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: trip
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+server:
+  port: 8083
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+  application:
+    name: trip-service
+  datasource:
+    url: jdbc:postgresql://trip-service-postgres:5432/tripdb
+    username: uberlite
+    password: changeme
+  flyway:
+    enabled: true
+    default-schema: trip
+    schemas: trip
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: trip
+  kafka:
+    bootstrap-servers: kafka:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+server:
+  port: 8083

@@ -12,9 +12,10 @@ eureka:
 ---
 # Docker profile: point clients at the compose service names
 spring:
-  profiles: docker
+  config:
+    activate:
+      on-profile: docker
   application:
     name: discovery-server
 server:
   port: 8761
-

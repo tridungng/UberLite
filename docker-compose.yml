@@ -44,20 +44,33 @@ services:
     ports:
       - "6379:6379"
 
-# Placeholder Postgres blocks for service-specific databases (one per service). Uncomment and copy when
-# adding a service that needs a DB.
-# postgres-trip-service:
-#   image: postgres:15
-#   environment:
-#     POSTGRES_DB: tripdb
-#     POSTGRES_USER: uberlite
-#     POSTGRES_PASSWORD: changeme
-#   ports:
-#     - "5432:5432"
-#   volumes:
-#     - trip-db-data:/var/lib/postgresql/data
+  trip-service-postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: tripdb
+      POSTGRES_USER: uberlite
+      POSTGRES_PASSWORD: changeme
+    ports:
+      - "5433:5432"
+    volumes:
+      - trip-service-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U uberlite -d tripdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-#volumes:
-#  trip-db-data:
-#
-# You can add more service containers as they are developed.
+  trip-service:
+    build:
+      context: .
+      dockerfile: trip-service/Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    ports:
+      - "8083:8083"
+    depends_on:
+      - trip-service-postgres
+      - kafka
+
+volumes:
+  trip-service-db-data:
