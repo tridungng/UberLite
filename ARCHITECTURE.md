@@ -1,5 +1,7 @@
 # UberLite MVP — Architecture Spec
 
+Stack: Java 27, Spring Boot 4.x, Maven multi-module
+
 Source: *Designing UberLite: a Ride Aggregator Service* (Prasaad & Vikström, UW CSE552, Fall 2019).
 This document is the MVP interpretation of that paper: same services, same trip state machine,
 infrastructure simplified to run on a laptop via Docker Compose.

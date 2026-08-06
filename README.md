@@ -1,6 +1,6 @@
 # UberLite
 
-Minimal scaffold for the UberLite MVP.
+Minimal scaffold for the UberLite MVP. Requires JDK 27 and Spring Boot 4.x.
 
 Running locally
 
