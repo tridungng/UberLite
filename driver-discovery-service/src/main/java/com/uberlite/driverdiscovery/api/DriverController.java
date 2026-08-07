@@ -3,37 +3,87 @@ package com.uberlite.driverdiscovery.api;
 import com.uberlite.common.dto.DriverCandidateDto;
 import com.uberlite.common.dto.LocationDto;
 import com.uberlite.driverdiscovery.service.DriverStoreService;
+
+import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-
+/**
+ * REST API for driver discovery operations.
+ * <p>
+ * Lightweight controller that delegates persistence and query logic to
+ * DriverStoreService.
+ */
 @RestController
 @RequestMapping("/drivers")
 public class DriverController {
     private final DriverStoreService store;
-    public DriverController(DriverStoreService store) { this.store = store; }
 
+    public DriverController(DriverStoreService store) {
+        this.store = store;
+    }
+
+    /**
+     * Accept a location update for the given driver and persist it.
+     *
+     * @param driverId id of the driver being updated
+     * @param loc location payload containing latitude and longitude
+     * @return HTTP 200 on success with an empty body
+     */
     @PostMapping("/{driverId}/location")
     public ResponseEntity<Void> updateLocation(@PathVariable String driverId, @RequestBody LocationDto loc) {
         store.updateLocation(driverId, loc);
         return ResponseEntity.ok().build();
     }
 
-    public static class StatusUpdate { public String status; }
+    /**
+     * Simple DTO used by the status update endpoint.
+     */
+    public static class StatusUpdate {
+        public String status;
+    }
+    /**
+     * Update the availability status of a driver.
+     *
+     * @param driverId id of the driver
+     * @param s wrapper containing the new status value
+     * @return HTTP 200 on success
+     */
     @PostMapping("/{driverId}/status")
     public ResponseEntity<Void> updateStatus(@PathVariable String driverId, @RequestBody StatusUpdate s) {
         store.setStatus(driverId, s.status);
         return ResponseEntity.ok().build();
     }
 
+    /**
+     * Return a list of nearby drivers within the given radius ordered by distance.
+     *
+     * @param lat search center latitude
+     * @param lon search center longitude
+     * @param radiusMeters radius in meters to search within
+     * @param limit maximum number of results
+     * @return list of nearby driver candidates
+     */
     @GetMapping("/nearby")
-    public List<DriverCandidateDto> nearby(@RequestParam double lat, @RequestParam double lon, @RequestParam double radiusMeters, @RequestParam(defaultValue = "10") int limit) {
+    public List<DriverCandidateDto> nearby(
+            @RequestParam double lat,
+            @RequestParam double lon,
+            @RequestParam double radiusMeters,
+            @RequestParam(defaultValue = "10") int limit) {
         return store.nearby(lat, lon, radiusMeters, limit);
     }
 
+    /**
+     * Return drivers whose H3 cell is within the k-ring of the provided cell.
+     *
+     * @param h3Cell central H3 cell id
+     * @param kRing H3 k-ring radius
+     * @param limit maximum number of results
+     * @return list of driver candidates inside the specified H3 area
+     */
     @GetMapping("/nearby-by-cell")
-    public List<DriverCandidateDto> nearbyByCell(@RequestParam String h3Cell, @RequestParam int kRing, @RequestParam(defaultValue = "10") int limit) {
+    public List<DriverCandidateDto> nearbyByCell(
+            @RequestParam String h3Cell, @RequestParam int kRing, @RequestParam(defaultValue = "10") int limit) {
         return store.nearbyByCell(h3Cell, kRing, limit);
     }
 }

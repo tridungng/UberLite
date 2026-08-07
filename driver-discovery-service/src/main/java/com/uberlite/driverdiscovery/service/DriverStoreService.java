@@ -14,6 +14,14 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.*;
 
+/**
+ * In-memory view backed by Redis for active drivers.
+ * <p>
+ * Responsibilities:
+ * - store and update driver geolocation and metadata in Redis
+ * - query nearby drivers by distance or H3 cell
+ * - evict stale drivers that have not reported recently
+ */
 @Service
 public class DriverStoreService {
     private static final String GEO_KEY = "drivers:active";
@@ -22,6 +30,12 @@ public class DriverStoreService {
     private final ZSetOperations<String, String> zOps;
     private final Clock clock;
 
+    /**
+     * Construct the store service.
+     *
+     * @param redis redis template used for geo and hash operations
+     * @param clock clock used to record and evaluate last-seen timestamps
+     */
     public DriverStoreService(@Qualifier("redisTemplate") RedisTemplate<String, String> redis, Clock clock) {
         this.redis = redis;
         this.geoOps = redis.opsForGeo();
@@ -29,6 +43,15 @@ public class DriverStoreService {
         this.clock = clock;
     }
 
+    /**
+     * Update a driver's current geolocation and metadata in Redis.
+     * <p>
+     * This stores the geo coordinate, h3 cell and last-seen timestamp. If the
+     * driver has no status recorded, it defaults to "ONLINE".
+     *
+     * @param driverId id of the driver
+     * @param loc location payload containing latitude and longitude
+     */
     public void updateLocation(String driverId, LocationDto loc) {
         geoOps.add(GEO_KEY, new Point(loc.getLon(), loc.getLat()), driverId);
         String cell = H3Util.latLngToCell(loc.getLat(), loc.getLon());
@@ -41,6 +64,13 @@ public class DriverStoreService {
         redis.opsForHash().putAll(hash, m);
     }
 
+    /**
+     * Set the driver's availability status. If set to OFFLINE the driver is
+     * removed from the active geo set.
+     *
+     * @param driverId id of the driver
+     * @param status new status value (e.g. "ONLINE", "OFFLINE")
+     */
     public void setStatus(String driverId, String status) {
         String hash = "driver:" + driverId;
         redis.opsForHash().put(hash, "status", status);
@@ -49,6 +79,19 @@ public class DriverStoreService {
         }
     }
 
+    /**
+     * Find drivers within the given radius (meters) from a point and return
+     * up to {@code limit} candidates ordered by distance.
+     * <p>
+     * This method currently performs an in-memory distance check using geo
+     * positions read from Redis.
+     *
+     * @param lat latitude of the search center
+     * @param lon longitude of the search center
+     * @param radiusMeters search radius in meters
+     * @param limit maximum number of results to return
+     * @return list of nearby driver candidates ordered by proximity
+     */
     public List<DriverCandidateDto> nearby(double lat, double lon, double radiusMeters, int limit) {
         Set<String> ids = Optional.ofNullable(zOps.range(GEO_KEY, 0, -1)).orElse(Collections.emptySet());
         List<DriverCandidateDto> list = new ArrayList<>();
@@ -56,8 +99,8 @@ public class DriverStoreService {
         for (String id : ids) {
             List<Point> pos = geoOps.position(GEO_KEY, id);
             if (pos == null || pos.isEmpty()) continue;
-            double dlat = pos.get(0).getY();
-            double dlon = pos.get(0).getX();
+            double dlat = pos.getFirst().getY();
+            double dlon = pos.getFirst().getX();
             double dist = haversineMeters(lat, lon, dlat, dlon);
             if (dist <= radiusMeters) withDist.add(Map.entry(id, dist));
         }
@@ -72,6 +115,18 @@ public class DriverStoreService {
         return list;
     }
 
+    /**
+     * Find drivers whose H3 cell is within the k-ring around the provided cell.
+     * <p>
+     * This is useful for coarse-grained locality queries that avoid distance
+     * calculations. Results are returned in insertion order until {@code limit}
+     * is reached.
+     *
+     * @param h3Cell central H3 cell id
+     * @param kRing radius in H3 rings (distance in cell hops)
+     * @param limit maximum number of candidates to return
+     * @return list of driver candidates within the specified H3 region
+     */
     public List<DriverCandidateDto> nearbyByCell(String h3Cell, int kRing, int limit) {
         List<String> cells = H3Util.gridDisk(h3Cell, kRing);
         Set<String> all = Optional.ofNullable(zOps.range(GEO_KEY, 0, -1)).orElse(Collections.emptySet());
@@ -81,7 +136,7 @@ public class DriverStoreService {
             if (h != null && cells.contains(h)) {
                 List<Point> pos = geoOps.position(GEO_KEY, id);
                 if (pos != null && !pos.isEmpty()) {
-                    double lon = pos.get(0).getX(), lat = pos.get(0).getY();
+                    double lon = pos.getFirst().getX(), lat = pos.getFirst().getY();
                     res.add(new DriverCandidateDto(id, new LocationDto(lat, lon), 0));
                     if (res.size() >= limit) break;
                 }
@@ -90,6 +145,13 @@ public class DriverStoreService {
         return res;
     }
 
+    /**
+     * Evict drivers that have not been seen within the provided threshold and
+     * mark them OFFLINE in Redis.
+     *
+     * @param olderThanEpochSeconds threshold in seconds (drivers with lastSeen older than now - threshold are removed)
+     * @return list of driver ids that were removed
+     */
     public List<String> evictStaleAndReturnRemoved(long olderThanEpochSeconds) {
         Set<String> ids = Optional.ofNullable(zOps.range(GEO_KEY, 0, -1)).orElse(Collections.emptySet());
         List<String> removed = new ArrayList<>();
