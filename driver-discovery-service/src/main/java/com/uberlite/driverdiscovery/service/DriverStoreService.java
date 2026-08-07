@@ -168,6 +168,15 @@ public class DriverStoreService {
         return removed;
     }
 
+    /**
+     * Compute the great-circle distance between two geographic coordinates using the Haversine formula.
+     *
+     * @param lat1 latitude of the first point in decimal degrees
+     * @param lon1 longitude of the first point in decimal degrees
+     * @param lat2 latitude of the second point in decimal degrees
+     * @param lon2 longitude of the second point in decimal degrees
+     * @return approximate distance between the two points in meters (uses a spherical Earth radius of 6\,371\,000 meters)
+     */
     private static double haversineMeters(double lat1, double lon1, double lat2, double lon2) {
         final int R = 6371000; // meters
         double dLat = Math.toRadians(lat2 - lat1);
