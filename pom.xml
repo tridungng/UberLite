@@ -28,6 +28,7 @@
         <module>discovery-server</module>
         <module>api-gateway</module>
         <module>trip-service</module>
+        <module>driver-discovery-service</module>
     </modules>
 
     <dependencyManagement>

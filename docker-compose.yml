@@ -72,5 +72,16 @@ services:
       - trip-service-postgres
       - kafka
 
+  driver-discovery-service:
+    build:
+      context: .
+      dockerfile: driver-discovery-service/Dockerfile
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    ports:
+      - "8086:8080"
+    depends_on:
+      - redis
+
 volumes:
   trip-service-db-data:

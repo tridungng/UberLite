@@ -37,7 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class TripControllerTest {
     private MockMvc mockMvc;
 
-    private StubTripService tripService = new StubTripService();
+    private final StubTripService tripService = new StubTripService();
 
     @org.junit.jupiter.api.BeforeEach
     void setup() {
