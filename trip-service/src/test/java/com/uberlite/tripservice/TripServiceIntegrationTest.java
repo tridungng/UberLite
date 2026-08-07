@@ -11,7 +11,9 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.web.context.WebApplicationContext;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.junit.jupiter.api.BeforeEach;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.kafka.test.EmbeddedKafkaBroker;
 import org.springframework.kafka.test.context.EmbeddedKafka;
@@ -38,11 +40,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.jpa.properties.hibernate.default_schema=trip",
         "spring.flyway.enabled=false"
 })
-@AutoConfigureMockMvc
 @EmbeddedKafka(partitions = 1, topics = Topics.TRIP_EVENTS)
 class TripServiceIntegrationTest {
-    @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private WebApplicationContext wac;
+
+    @BeforeEach
+    void setup() {
+        this.mockMvc = MockMvcBuilders.webAppContextSetup(wac).build();
+    }
 
     @Autowired
     private EmbeddedKafkaBroker embeddedKafka;

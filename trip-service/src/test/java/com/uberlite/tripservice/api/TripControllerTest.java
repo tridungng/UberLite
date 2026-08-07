@@ -9,7 +9,6 @@ import com.uberlite.tripservice.api.dto.TripResponse;
 import com.uberlite.tripservice.domain.TripService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
@@ -28,14 +27,25 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(TripController.class)
-@Import({ApiExceptionHandler.class, TripControllerTest.StubConfig.class})
+@org.springframework.boot.test.context.SpringBootTest(properties = {
+        "spring.datasource.url=jdbc:h2:mem:tripdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE",
+        "spring.datasource.driver-class-name=org.h2.Driver",
+        "spring.datasource.username=sa",
+        "spring.datasource.password=",
+        "spring.jpa.hibernate.ddl-auto=create-drop"
+})
+@Deprecated
 class TripControllerTest {
-    @Autowired
     private MockMvc mockMvc;
 
-    @Autowired
-    private StubTripService tripService;
+    private StubTripService tripService = new StubTripService();
+
+    @org.junit.jupiter.api.BeforeEach
+    void setup() {
+        this.mockMvc = org.springframework.test.web.servlet.setup.MockMvcBuilders
+                .standaloneSetup(new TripController(tripService), new ApiExceptionHandler())
+                .build();
+    }
 
     @Test
     void createTripReturnsCreatedTrip() throws Exception {
@@ -107,8 +117,9 @@ class TripControllerTest {
 
     @TestConfiguration
     static class StubConfig {
-        @Bean
-        StubTripService tripService() {
+        @Bean(name = "stubTripService")
+        @org.springframework.context.annotation.Primary
+        StubTripService stubTripService() {
             return new StubTripService();
         }
     }
