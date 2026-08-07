@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.data.geo.Point;
 import org.springframework.data.redis.core.GeoOperations;
+import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 
@@ -36,8 +37,8 @@ public class DriverStoreServiceEvictionTest {
         long now = Instant.parse("2026-08-07T12:00:00Z").getEpochSecond();
         Clock clock = Clock.fixed(Instant.parse("2026-08-07T12:00:00Z"), ZoneOffset.UTC);
         when(zOps.range("drivers:active", 0, -1)).thenReturn(Set.of("d1","d2"));
-        when(redis.opsForHash()).thenReturn(Mockito.mock(org.springframework.data.redis.core.HashOperations.class));
-        org.springframework.data.redis.core.HashOperations hs = redis.opsForHash();
+        HashOperations<String, String, String> hs = Mockito.mock(HashOperations.class);
+        when(redis.opsForHash()).thenReturn(hs);
         when(hs.get("driver:d1","lastSeen")).thenReturn(String.valueOf(now - 60));
         when(hs.get("driver:d2","lastSeen")).thenReturn(String.valueOf(now - 200));
 
