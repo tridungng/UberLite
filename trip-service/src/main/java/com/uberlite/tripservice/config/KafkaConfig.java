@@ -4,7 +4,6 @@ import com.uberlite.common.events.Topics;
 import com.uberlite.common.events.TripEvent;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.common.serialization.StringSerializer;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
@@ -20,8 +19,11 @@ import java.util.Map;
 @Configuration
 public class KafkaConfig {
 
-    @Autowired
-    private Environment env;
+    private final Environment env;
+
+    public KafkaConfig(Environment env) {
+        this.env = env;
+    }
 
     @Bean
     public ProducerFactory<String, TripEvent> tripEventProducerFactory() {
@@ -40,7 +42,8 @@ public class KafkaConfig {
     }
 
     @Bean
-    public KafkaTemplate<String, TripEvent> tripEventKafkaTemplate(ProducerFactory<String, TripEvent> tripEventProducerFactory) {
+    public KafkaTemplate<String, TripEvent> tripEventKafkaTemplate(
+            ProducerFactory<String, TripEvent> tripEventProducerFactory) {
         return new KafkaTemplate<>(tripEventProducerFactory);
     }
 

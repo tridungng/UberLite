@@ -8,10 +8,8 @@ import com.uberlite.tripservice.api.dto.TripHistoryDto;
 import com.uberlite.tripservice.api.dto.TripResponse;
 import com.uberlite.tripservice.domain.TripService;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -27,13 +25,14 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@org.springframework.boot.test.context.SpringBootTest(properties = {
-        "spring.datasource.url=jdbc:h2:mem:tripdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE",
-        "spring.datasource.driver-class-name=org.h2.Driver",
-        "spring.datasource.username=sa",
-        "spring.datasource.password=",
-        "spring.jpa.hibernate.ddl-auto=create-drop"
-})
+@org.springframework.boot.test.context.SpringBootTest(
+        properties = {
+            "spring.datasource.url=jdbc:h2:mem:tripdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE",
+            "spring.datasource.driver-class-name=org.h2.Driver",
+            "spring.datasource.username=sa",
+            "spring.datasource.password=",
+            "spring.jpa.hibernate.ddl-auto=create-drop"
+        })
 @Deprecated
 class TripControllerTest {
     private MockMvc mockMvc;
@@ -42,8 +41,8 @@ class TripControllerTest {
 
     @org.junit.jupiter.api.BeforeEach
     void setup() {
-        this.mockMvc = org.springframework.test.web.servlet.setup.MockMvcBuilders
-                .standaloneSetup(new TripController(tripService), new ApiExceptionHandler())
+        this.mockMvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(
+                        new TripController(tripService), new ApiExceptionHandler())
                 .build();
     }
 
@@ -61,14 +60,11 @@ class TripControllerTest {
                 0,
                 Instant.parse("2026-08-05T00:00:00Z"),
                 Instant.parse("2026-08-05T00:00:00Z"),
-                List.of()
-        );
+                List.of());
 
-        mockMvc.perform(post("/trips")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"riderId":"rider-1","pickup":{"lat":1.0,"lon":2.0},"dropoff":{"lat":3.0,"lon":4.0}}
-                                """))
+        mockMvc.perform(post("/trips").contentType(MediaType.APPLICATION_JSON).content("""
+            {"riderId":"rider-1","pickup":{"lat":1.0,"lon":2.0},"dropoff":{"lat":3.0,"lon":4.0}}
+            """))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value(id.toString()))
                 .andExpect(jsonPath("$.state").value("REQUESTED"));
@@ -78,19 +74,17 @@ class TripControllerTest {
     void illegalTransitionReturnsConflict() throws Exception {
         tripService.transitionResponder = (id, request) -> {
             throw new com.uberlite.tripservice.domain.IllegalTransitionException(
-                    TripState.REQUESTED,
-                    request.toState(),
-                    java.util.EnumSet.of(TripState.PRICED)
-            );
+                    TripState.REQUESTED, request.toState(), java.util.EnumSet.of(TripState.PRICED));
         };
 
         mockMvc.perform(post("/trips/11111111-1111-1111-1111-111111111111/transition")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"toState":"DRIVER_PROPOSED","payload":{"reason":"bad"}}
-                                """))
+                            {"toState":"DRIVER_PROPOSED","payload":{"reason":"bad"}}
+                            """))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.message").value("Illegal transition from REQUESTED to DRIVER_PROPOSED. Allowed next states: [PRICED]"));
+                .andExpect(jsonPath("$.message")
+                        .value("Illegal transition from REQUESTED to DRIVER_PROPOSED. Allowed next states: [PRICED]"));
     }
 
     @Test
@@ -107,8 +101,12 @@ class TripControllerTest {
                 0,
                 Instant.parse("2026-08-05T00:00:00Z"),
                 Instant.parse("2026-08-05T00:00:00Z"),
-                List.of(new TripHistoryDto(UUID.randomUUID(), null, TripState.REQUESTED, Instant.parse("2026-08-05T00:00:00Z"), Map.of()))
-        );
+                List.of(new TripHistoryDto(
+                        UUID.randomUUID(),
+                        null,
+                        TripState.REQUESTED,
+                        Instant.parse("2026-08-05T00:00:00Z"),
+                        Map.of())));
 
         mockMvc.perform(get("/trips/" + id))
                 .andExpect(status().isOk())

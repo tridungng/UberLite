@@ -8,12 +8,12 @@ import org.junit.jupiter.api.Test;
 import java.time.Instant;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class TripEventTest {
     @Test
     public void tripEventJsonRoundTrip() throws Exception {
-        TripEvent ev = new TripEvent("trip-1", TripState.REQUESTED, TripState.PRICED, Instant.now(), Map.of("k","v"));
+        TripEvent ev = new TripEvent("trip-1", TripState.REQUESTED, TripState.PRICED, Instant.now(), Map.of("k", "v"));
         ObjectMapper m = new ObjectMapper();
         m.registerModule(new JavaTimeModule());
         m.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);

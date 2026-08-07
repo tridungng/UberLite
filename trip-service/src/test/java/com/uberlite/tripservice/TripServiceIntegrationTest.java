@@ -9,37 +9,37 @@ import com.uberlite.tripservice.repository.TripRepository;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.context.WebApplicationContext;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import org.junit.jupiter.api.BeforeEach;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.kafka.test.EmbeddedKafkaBroker;
 import org.springframework.kafka.test.context.EmbeddedKafka;
 import org.springframework.kafka.test.utils.KafkaTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.WebApplicationContext;
 
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(properties = {
-        "spring.kafka.bootstrap-servers=${spring.embedded.kafka.brokers}",
-        "spring.datasource.url=jdbc:h2:mem:tripdb;MODE=PostgreSQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE",
-        "spring.datasource.driver-class-name=org.h2.Driver",
-        "spring.datasource.username=sa",
-        "spring.datasource.password=",
-        "spring.jpa.database-platform=org.hibernate.dialect.H2Dialect",
-        "spring.jpa.hibernate.ddl-auto=create-drop",
-        "spring.jpa.properties.hibernate.hbm2ddl.create_namespaces=true",
-        "spring.jpa.properties.hibernate.default_schema=trip",
-        "spring.flyway.enabled=false"
-})
+@SpringBootTest(
+        properties = {
+            "spring.kafka.bootstrap-servers=${spring.embedded.kafka.brokers}",
+            "spring.datasource.url=jdbc:h2:mem:tripdb;MODE=PostgreSQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE",
+            "spring.datasource.driver-class-name=org.h2.Driver",
+            "spring.datasource.username=sa",
+            "spring.datasource.password=",
+            "spring.jpa.database-platform=org.hibernate.dialect.H2Dialect",
+            "spring.jpa.hibernate.ddl-auto=create-drop",
+            "spring.jpa.properties.hibernate.hbm2ddl.create_namespaces=true",
+            "spring.jpa.properties.hibernate.default_schema=trip",
+            "spring.flyway.enabled=false"
+        })
 @EmbeddedKafka(partitions = 1, topics = Topics.TRIP_EVENTS)
 class TripServiceIntegrationTest {
     private MockMvc mockMvc;
@@ -63,11 +63,10 @@ class TripServiceIntegrationTest {
         Consumer<String, String> consumer = createConsumer();
         embeddedKafka.consumeFromAnEmbeddedTopic(consumer, Topics.TRIP_EVENTS);
 
-        String createResponse = mockMvc.perform(post("/trips")
-                        .contentType("application/json")
-                        .content("""
-                                {"riderId":"rider-1","pickup":{"lat":37.0,"lon":-122.0},"dropoff":{"lat":37.5,"lon":-122.3}}
-                                """))
+        String createResponse = mockMvc.perform(
+                        post("/trips").contentType("application/json").content("""
+                            {"riderId":"rider-1","pickup":{"lat":37.0,"lon":-122.0},"dropoff":{"lat":37.5,"lon":-122.3}}
+                            """))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.state").value("REQUESTED"))
                 .andReturn()
@@ -79,15 +78,20 @@ class TripServiceIntegrationTest {
         mockMvc.perform(post("/trips/" + tripId + "/transition")
                         .contentType("application/json")
                         .content("""
-                                {"toState":"PRICED","payload":{"quoteId":"quote-1"}}
-                                """))
+                            {"toState":"PRICED","payload":{"quoteId":"quote-1"}}
+                            """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.state").value("PRICED"));
 
         assertThat(tripRepository.findById(java.util.UUID.fromString(tripId))).isPresent();
-        assertThat(tripRepository.findById(java.util.UUID.fromString(tripId)).orElseThrow().getState()).isEqualTo(TripState.PRICED);
+        assertThat(tripRepository
+                        .findById(java.util.UUID.fromString(tripId))
+                        .orElseThrow()
+                        .getState())
+                .isEqualTo(TripState.PRICED);
 
-        String eventJson = KafkaTestUtils.getSingleRecord(consumer, Topics.TRIP_EVENTS).value();
+        String eventJson =
+                KafkaTestUtils.getSingleRecord(consumer, Topics.TRIP_EVENTS).value();
         ObjectMapper mapper = new ObjectMapper().registerModule(new JavaTimeModule());
         TripEvent event = mapper.readValue(eventJson, TripEvent.class);
 
@@ -101,9 +105,7 @@ class TripServiceIntegrationTest {
         Map<String, Object> props = KafkaTestUtils.consumerProps("trip-service-it", "false", embeddedKafka);
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
         return new org.springframework.kafka.core.DefaultKafkaConsumerFactory<>(
-                props,
-                new StringDeserializer(),
-                new StringDeserializer()
-        ).createConsumer();
+                        props, new StringDeserializer(), new StringDeserializer())
+                .createConsumer();
     }
 }
