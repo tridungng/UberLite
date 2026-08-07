@@ -83,5 +83,27 @@ services:
     depends_on:
       - redis
 
+  route-service:
+    build:
+      context: .
+      dockerfile: route-service/Dockerfile
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    ports:
+      - "8087:8080"
+    depends_on:
+      - redis
+
+  time-estimation-service:
+    build:
+      context: .
+      dockerfile: time-estimation-service/Dockerfile
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    ports:
+      - "8088:8080"
+    depends_on:
+      - redis
+
 volumes:
   trip-service-db-data:
