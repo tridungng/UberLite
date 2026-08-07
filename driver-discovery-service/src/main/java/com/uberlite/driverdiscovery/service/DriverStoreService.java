@@ -3,6 +3,7 @@ package com.uberlite.driverdiscovery.service;
 import com.uberlite.common.dto.DriverCandidateDto;
 import com.uberlite.common.dto.LocationDto;
 import com.uberlite.common.geo.H3Util;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.geo.Point;
 import org.springframework.data.redis.core.GeoOperations;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -12,7 +13,6 @@ import org.springframework.stereotype.Service;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 public class DriverStoreService {
@@ -22,7 +22,7 @@ public class DriverStoreService {
     private final ZSetOperations<String, String> zOps;
     private final Clock clock;
 
-    public DriverStoreService(RedisTemplate<String, String> redis, Clock clock) {
+    public DriverStoreService(@Qualifier("redisTemplate") RedisTemplate<String, String> redis, Clock clock) {
         this.redis = redis;
         this.geoOps = redis.opsForGeo();
         this.zOps = redis.opsForZSet();
@@ -110,8 +110,12 @@ public class DriverStoreService {
         final int R = 6371000; // meters
         double dLat = Math.toRadians(lat2 - lat1);
         double dLon = Math.toRadians(lon2 - lon1);
-        double a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) * Math.sin(dLon/2) * Math.sin(dLon/2);
-        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                + Math.cos(Math.toRadians(lat1))
+                        * Math.cos(Math.toRadians(lat2))
+                        * Math.sin(dLon / 2)
+                        * Math.sin(dLon / 2);
+        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         return R * c;
     }
 }

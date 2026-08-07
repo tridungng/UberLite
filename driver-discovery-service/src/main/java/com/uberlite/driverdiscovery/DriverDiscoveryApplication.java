@@ -10,8 +10,12 @@ import java.time.Clock;
 @EnableScheduling
 @SpringBootApplication
 public class DriverDiscoveryApplication {
-    public static void main(String[] args) { SpringApplication.run(DriverDiscoveryApplication.class, args); }
+    static void main(String[] args) {
+        SpringApplication.run(DriverDiscoveryApplication.class, args);
+    }
 
     @Bean
-    public Clock clock() { return Clock.systemUTC(); }
+    public Clock clock() {
+        return Clock.systemUTC();
+    }
 }
