@@ -32,6 +32,13 @@
         <module>route-service</module>
         <module>time-estimation-service</module>
         <module>surge-pricing-service</module>
+        <module>price-estimation-service</module>
+        <module>matching-service</module>
+        <module>tax-tolls-service</module>
+        <module>discounts-promotions-service</module>
+        <module>forecasting-service</module>
+        <module>matching-analytics-service</module>
+        <module>discounts-analytics-service</module>
     </modules>
 
     <dependencyManagement>

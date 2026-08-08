@@ -117,5 +117,84 @@ services:
       - redis
       - driver-discovery-service
 
+  price-estimation-service:
+    build:
+      context: .
+      dockerfile: price-estimation-service/Dockerfile
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    ports:
+      - "8085:8085"
+    depends_on:
+      - route-service
+      - time-estimation-service
+      - surge-pricing-service
+      - tax-tolls-service
+      - discounts-promotions-service
+
+  matching-service:
+    build:
+      context: .
+      dockerfile: matching-service/Dockerfile
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    ports:
+      - "8089:8089"
+    depends_on:
+      - driver-discovery-service
+      - route-service
+
+  tax-tolls-service:
+    build:
+      context: .
+      dockerfile: tax-tolls-service/Dockerfile
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    ports:
+      - "8090:8090"
+
+  discounts-promotions-service:
+    build:
+      context: .
+      dockerfile: discounts-promotions-service/Dockerfile
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    ports:
+      - "8091:8091"
+
+  forecasting-service:
+    build:
+      context: .
+      dockerfile: forecasting-service/Dockerfile
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    depends_on:
+      - kafka
+      - redis
+
+  matching-analytics-service:
+    build:
+      context: .
+      dockerfile: matching-analytics-service/Dockerfile
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    ports:
+      - "8093:8093"
+    depends_on:
+      - kafka
+      - discovery-server
+
+  discounts-analytics-service:
+    build:
+      context: .
+      dockerfile: discounts-analytics-service/Dockerfile
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    ports:
+      - "8094:8094"
+    depends_on:
+      - kafka
+      - discovery-server
+
 volumes:
   trip-service-db-data:
