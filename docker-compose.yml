@@ -105,5 +105,17 @@ services:
     depends_on:
       - redis
 
+  surge-pricing-service:
+    build:
+      context: .
+      dockerfile: surge-pricing-service/Dockerfile
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    ports:
+      - "8084:8084"
+    depends_on:
+      - redis
+      - driver-discovery-service
+
 volumes:
   trip-service-db-data:
