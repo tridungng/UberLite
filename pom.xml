@@ -31,6 +31,7 @@
         <module>driver-discovery-service</module>
         <module>route-service</module>
         <module>time-estimation-service</module>
+        <module>surge-pricing-service</module>
     </modules>
 
     <dependencyManagement>
