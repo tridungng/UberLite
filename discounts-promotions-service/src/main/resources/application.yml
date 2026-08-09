@@ -5,6 +5,18 @@ spring:
 server:
   port: 8091
 
+spring:
+  datasource:
+    url: jdbc:postgresql://discounts-postgres:5432/discountsdb
+    username: uberlite
+    password: changeme
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
 eureka:
   client:
     serviceUrl:

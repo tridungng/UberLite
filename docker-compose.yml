@@ -72,6 +72,60 @@ services:
       - trip-service-postgres
       - kafka
 
+  tax-tolls-postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: taxtollsdb
+      POSTGRES_USER: uberlite
+      POSTGRES_PASSWORD: changeme
+    ports:
+      - "5434:5432"
+    volumes:
+      - tax-tolls-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U uberlite -d taxtollsdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  tax-tolls-service:
+    build:
+      context: .
+      dockerfile: tax-tolls-service/Dockerfile
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    ports:
+      - "8090:8090"
+    depends_on:
+      - tax-tolls-postgres
+
+  discounts-postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: discountsdb
+      POSTGRES_USER: uberlite
+      POSTGRES_PASSWORD: changeme
+    ports:
+      - "5435:5432"
+    volumes:
+      - discounts-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U uberlite -d discountsdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  discounts-promotions-service:
+    build:
+      context: .
+      dockerfile: discounts-promotions-service/Dockerfile
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    ports:
+      - "8091:8091"
+    depends_on:
+      - discounts-postgres
+
   driver-discovery-service:
     build:
       context: .
@@ -198,3 +252,5 @@ services:
 
 volumes:
   trip-service-db-data:
+  tax-tolls-db-data:
+  discounts-db-data:

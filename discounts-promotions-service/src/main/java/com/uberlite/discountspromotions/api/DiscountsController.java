@@ -1,25 +1,29 @@
 package com.uberlite.discountspromotions.api;
 
-import com.uberlite.discountspromotions.domain.DiscountInfo;
-import com.uberlite.discountspromotions.domain.DiscountService;
+import com.uberlite.discountspromotions.domain.DiscountEvaluator;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
 
 @RestController
 public class DiscountsController {
-    private final DiscountService discountService;
+    private final DiscountEvaluator evaluator;
 
-    public DiscountsController(DiscountService discountService) {
-        this.discountService = discountService;
+    public DiscountsController(DiscountEvaluator evaluator) {
+        this.evaluator = evaluator;
     }
 
-    @GetMapping("/discount/lookup")
-    public ResponseEntity<DiscountInfo> lookup(
-            @RequestParam String riderId,
-            @RequestParam(required = false) String promoCode) {
-        DiscountInfo discount = discountService.lookupDiscount(riderId, promoCode);
-        return ResponseEntity.ok(discount);
+    @PostMapping("/discounts/evaluate")
+    public ResponseEntity<Map<String, Object>> evaluate(@RequestBody Map<String, Object> req) {
+        String riderId = (String) req.get("riderId");
+        int riderTripCount = 0;
+        if (req.get("riderTripCount") instanceof Number) {
+            riderTripCount = ((Number) req.get("riderTripCount")).intValue();
+        }
+        double discountPct = evaluator.evaluate(riderId, riderTripCount);
+        return ResponseEntity.ok(Map.of("discountPct", discountPct));
     }
 }

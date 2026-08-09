@@ -6,11 +6,11 @@ import java.util.Map;
 
 @Service
 public class DiscountService {
+    // Legacy in-memory support retained for backward compatibility
     private final Map<String, Double> activeDiscounts = new HashMap<>();
 
     public DiscountService() {
         // Initialize with sample promo rules
-        // In production, this would be persisted in Postgres
         activeDiscounts.put("FIRST_RIDE", 0.20); // 20% off first ride
         activeDiscounts.put("REFERRAL", 0.15);    // 15% off referral
     }

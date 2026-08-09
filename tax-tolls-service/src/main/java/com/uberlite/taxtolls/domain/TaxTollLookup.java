@@ -4,27 +4,36 @@ import org.springframework.stereotype.Service;
 import java.util.HashMap;
 import java.util.Map;
 
+import com.uberlite.taxtolls.repository.TaxRateRepository;
+import com.uberlite.taxtolls.repository.TollSegmentRepository;
+import com.uberlite.taxtolls.repository.entity.TaxRateEntity;
+import com.uberlite.taxtolls.repository.entity.TollSegmentEntity;
+import org.springframework.transaction.annotation.Transactional;
+
 @Service
 public class TaxTollLookup {
-    private final Map<String, Double> taxRates = new HashMap<>();
-    private final Map<String, Double> tollsByRegion = new HashMap<>();
+    private final TaxRateRepository taxRateRepository;
+    private final TollSegmentRepository tollSegmentRepository;
 
-    public TaxTollLookup() {
-        // Initialize with sample data
-        taxRates.put("CA", 0.0725);
-        taxRates.put("NY", 0.0800);
-        taxRates.put("TX", 0.0625);
-        taxRates.put("WA", 0.1025);
-        
-        tollsByRegion.put("CA", 2.50);
-        tollsByRegion.put("NY", 5.00);
-        tollsByRegion.put("TX", 0.0);
-        tollsByRegion.put("WA", 1.75);
+    public TaxTollLookup(TaxRateRepository taxRateRepository, TollSegmentRepository tollSegmentRepository) {
+        this.taxRateRepository = taxRateRepository;
+        this.tollSegmentRepository = tollSegmentRepository;
     }
 
+    @Transactional(readOnly = true)
     public TaxTollInfo lookupByRegion(String region) {
-        double taxRate = taxRates.getOrDefault(region, 0.0);
-        double tollAmount = tollsByRegion.getOrDefault(region, 0.0);
+        TaxRateEntity tax = taxRateRepository.findById(region).orElse(null);
+        TollSegmentEntity toll = tollSegmentRepository.findById(region + "-DEFAULT").orElse(null);
+
+        double taxRate = tax == null ? 0.0 : tax.getRate().doubleValue();
+        double tollAmount = toll == null ? 0.0 : toll.getAmount().doubleValue();
         return new TaxTollInfo(region, taxRate, tollAmount);
+    }
+
+    /** Simple toll estimate placeholder: if distanceKm > threshold => flat toll else 0.0 */
+    public double estimateTollByDistance(double distanceKm) {
+        double thresholdKm = 20.0;
+        double flatToll = 2.50;
+        return distanceKm > thresholdKm ? flatToll : 0.0;
     }
 }
