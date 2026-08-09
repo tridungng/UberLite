@@ -10,4 +10,16 @@ public class TaxTollInfo {
         this.taxRate = taxRate;
         this.tollAmount = tollAmount;
     }
+
+    public String getRegion() {
+        return region;
+    }
+
+    public double getTaxRate() {
+        return taxRate;
+    }
+
+    public double getTollAmount() {
+        return tollAmount;
+    }
 }

@@ -1,12 +1,13 @@
 package com.uberlite.taxtolls;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.ResponseEntity;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 
@@ -23,6 +24,13 @@ public class TaxTollsIntegrationTest {
             .withDatabaseName("taxtollsdb")
             .withUsername("uberlite")
             .withPassword("changeme");
+
+    @DynamicPropertySource
+    static void datasourceProperties(org.springframework.test.context.DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", postgres::getJdbcUrl);
+        registry.add("spring.datasource.username", postgres::getUsername);
+        registry.add("spring.datasource.password", postgres::getPassword);
+    }
 
     @Autowired
     private TestRestTemplate restTemplate;
