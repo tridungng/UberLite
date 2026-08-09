@@ -1,11 +1,10 @@
-spring:
-  application:
-    name: tax-tolls-service
-
 server:
   port: 8090
 
 spring:
+  application:
+    name: tax-tolls-service
+
   datasource:
     url: jdbc:postgresql://tax-tolls-postgres:5432/taxtollsdb
     username: uberlite
