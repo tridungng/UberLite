@@ -8,8 +8,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 public interface TimeEstimationClient {
     @GetMapping("/time/estimate")
     TimeEstimate estimate(@RequestParam String h3Cell, @RequestParam double distanceKm);
-}
 
-class TimeEstimate {
-    public double estimatedMinutes;
+    class TimeEstimate {
+        public double estimatedMinutes;
+    }
 }

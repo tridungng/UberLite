@@ -8,8 +8,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 public interface SurgePricingClient {
     @GetMapping("/surge/multiplier")
     SurgeResponse getMultiplier(@RequestParam String h3Cell);
-}
 
-class SurgeResponse {
-    public double multiplier;
+    class SurgeResponse {
+        public double multiplier;
+    }
 }

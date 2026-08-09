@@ -11,9 +11,9 @@ public interface RouteServiceClient {
                            @RequestParam double lon1,
                            @RequestParam double lat2,
                            @RequestParam double lon2);
-}
 
-class RouteEstimate {
-    public double straightDistanceKm;
-    public double detourFactor;
+    class RouteEstimate {
+        public double straightDistanceKm;
+        public double detourFactor;
+    }
 }

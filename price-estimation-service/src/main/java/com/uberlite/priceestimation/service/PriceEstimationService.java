@@ -20,12 +20,13 @@ public class PriceEstimationService {
     private final DiscountsClient discountsClient;
     private final PricingCalculator pricingCalculator;
 
-    public PriceEstimationService(RouteServiceClient routeClient,
-                                  TimeEstimationClient timeClient,
-                                  SurgePricingClient surgeClient,
-                                  TaxTollsClient taxClient,
-                                  DiscountsClient discountsClient,
-                                  PricingCalculator pricingCalculator) {
+    public PriceEstimationService(
+            RouteServiceClient routeClient,
+            TimeEstimationClient timeClient,
+            SurgePricingClient surgeClient,
+            TaxTollsClient taxClient,
+            DiscountsClient discountsClient,
+            PricingCalculator pricingCalculator) {
         this.routeClient = routeClient;
         this.timeClient = timeClient;
         this.surgeClient = surgeClient;
@@ -42,7 +43,7 @@ public class PriceEstimationService {
             double lon2 = req.dropoff.lon;
 
             // 1. Route
-            var route = null;
+            RouteServiceClient.RouteEstimate route = null;
             try {
                 route = routeClient.estimate(lat1, lon1, lat2, lon2);
             } catch (FeignException fe) {
@@ -52,7 +53,7 @@ public class PriceEstimationService {
 
             // 2. Time estimation
             String pickupCell = H3Util.latLngToCell(lat1, lon1);
-            var time = null;
+            TimeEstimationClient.TimeEstimate time = null;
             try {
                 time = timeClient.estimate(pickupCell, distanceKm);
             } catch (FeignException fe) {
@@ -61,7 +62,7 @@ public class PriceEstimationService {
             double estimatedMinutes = time.estimatedMinutes;
 
             // 3. Surge
-            var surge = null;
+            SurgePricingClient.SurgeResponse surge = null;
             try {
                 surge = surgeClient.getMultiplier(pickupCell);
             } catch (FeignException fe) {
@@ -105,7 +106,8 @@ public class PriceEstimationService {
             breakdown.put("discountPct", discountPct);
             breakdown.put("taxRate", taxRate);
 
-            double amount = pricingCalculator.calculateUsingFormula(distanceKm, estimatedMinutes, surgeMultiplier, tollAmount, discountPct, taxRate);
+            double amount = pricingCalculator.calculateUsingFormula(
+                    distanceKm, estimatedMinutes, surgeMultiplier, tollAmount, discountPct, taxRate);
             return new PriceQuoteDto(amount, breakdown);
         } catch (FeignException fe) {
             String url = fe.request() != null ? fe.request().url() : "unknown";
