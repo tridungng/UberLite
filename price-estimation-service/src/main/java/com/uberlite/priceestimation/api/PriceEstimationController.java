@@ -1,32 +1,23 @@
 package com.uberlite.priceestimation.api;
 
-import com.uberlite.priceestimation.domain.PriceEstimate;
-import com.uberlite.priceestimation.domain.PricingCalculator;
+import com.uberlite.priceestimation.service.PriceEstimationService;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 public class PriceEstimationController {
-    private final PricingCalculator pricingCalculator;
+    private final PriceEstimationService priceEstimationService;
 
-    public PriceEstimationController(PricingCalculator pricingCalculator) {
-        this.pricingCalculator = pricingCalculator;
+    public PriceEstimationController(PriceEstimationService priceEstimationService) {
+        this.priceEstimationService = priceEstimationService;
     }
 
-    @PostMapping("/price/estimate")
-    public ResponseEntity<PriceEstimate> estimate(
-            @RequestParam String tripId,
-            @RequestParam double distanceKm,
-            @RequestParam double estimatedMinutes,
-            @RequestParam(defaultValue = "1.0") double surgeMultiplier,
-            @RequestParam(defaultValue = "0.0") double tollAmount,
-            @RequestParam(defaultValue = "0.0") double discountRate) {
-        
-        PriceEstimate estimate = pricingCalculator.calculatePrice(
-            tripId, distanceKm, estimatedMinutes, surgeMultiplier, tollAmount, discountRate
-        );
-        return ResponseEntity.ok(estimate);
+    @PostMapping("/price-estimates")
+    public ResponseEntity<PriceQuoteDto> estimate(@RequestBody PriceEstimateRequest req) {
+        PriceQuoteDto quote = priceEstimationService.estimatePrice(req);
+        return ResponseEntity.ok(quote);
     }
 }
