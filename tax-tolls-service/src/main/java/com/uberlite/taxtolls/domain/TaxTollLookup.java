@@ -1,8 +1,7 @@
 package com.uberlite.taxtolls.domain;
 
+import com.uberlite.common.dto.RouteDto;
 import org.springframework.stereotype.Service;
-import java.util.HashMap;
-import java.util.Map;
 
 import com.uberlite.taxtolls.repository.TaxRateRepository;
 import com.uberlite.taxtolls.repository.TollSegmentRepository;
@@ -30,10 +29,13 @@ public class TaxTollLookup {
         return new TaxTollInfo(region, taxRate, tollAmount);
     }
 
-    /** Simple toll estimate placeholder: if distanceKm > threshold => flat toll else 0.0 */
-    public double estimateTollByDistance(double distanceKm) {
-        double thresholdKm = 20.0;
+    /**
+     * MVP placeholder: if route distance exceeds 20 km, return a flat toll.
+     * Real toll-segment lookups can replace this without changing the endpoint contract.
+     */
+    public double estimateToll(RouteDto route) {
+        long thresholdMeters = 20_000L;
         double flatToll = 2.50;
-        return distanceKm > thresholdKm ? flatToll : 0.0;
+        return route.getDistanceMeters() > thresholdMeters ? flatToll : 0.0;
     }
 }
