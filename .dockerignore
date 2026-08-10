@@ -1,0 +1,15 @@
+# Every Dockerfile copies the whole repo (the Maven reactor needs all modules present), so keep
+# build-context junk out: it bloats the context and can leak a stale host-built JAR into the image.
+target/
+*/target/
+.git/
+.gitignore
+.idea/
+*.iml
+.mvn/wrapper/maven-wrapper.jar
+**/*.log
+.DS_Store
+docker-compose.yml
+**/README.md
+ARCHITECTURE.md
+

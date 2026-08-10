@@ -1,4 +1,4 @@
-FROM maven:3.10.1-eclipse-temurin-25 AS builder
+FROM maven:3.9-eclipse-temurin-25 AS builder
 WORKDIR /workspace
 COPY . .
 RUN mvn -f pom.xml -pl route-service -am -DskipTests package
