@@ -36,6 +36,18 @@
             <artifactId>jakarta.validation-api</artifactId>
         </dependency>
 
+        <!--
+          Optional so only the modules that actually consume `trip-events` pull Kafka in. It is here
+          at all because TripEventConsumerConfiguration expresses a policy all three consumers must
+          share; the deserializer itself is configured through Boot properties, which keeps this
+          module free of a Jackson 3 dependency it has no other use for.
+        -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+            <optional>true</optional>
+        </dependency>
+
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
