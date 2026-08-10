@@ -5,6 +5,9 @@ import jakarta.persistence.*;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Entity
@@ -41,11 +44,47 @@ public class TripEntity {
     @Column(name = "quoted_price", precision = 19, scale = 2)
     private BigDecimal quotedPrice;
 
+    @Column(name = "quote_currency", length = 8)
+    private String quoteCurrency;
+
+    /**
+     * The Price Estimation breakdown, kept verbatim. Storing only the amount would leave us unable
+     * to answer "why was I charged this?" without re-quoting, which by then returns a different
+     * number because surge has moved.
+     */
+    @Convert(converter = JsonMapConverter.class)
+    @Column(name = "quote_breakdown", columnDefinition = "text")
+    private Map<String, Object> quoteBreakdown;
+
     @Column(name = "driver_id")
     private String driverId;
 
+    /**
+     * Drivers who declined this trip. Matching is stateless and tracks no exclusions
+     * (ARCHITECTURE.md Sec. 4), so this list is the only thing stopping it re-proposing them.
+     */
+    @Convert(converter = JsonStringListConverter.class)
+    @Column(name = "declined_driver_ids", nullable = false, columnDefinition = "text")
+    private List<String> declinedDriverIds = new ArrayList<>();
+
     @Column(name = "attempt_count", nullable = false)
     private int attemptCount;
+
+    /**
+     * Whether this trip is currently counted in the Surge Pricing pending-request gauge. Guards
+     * against double-increment (retried quote) and double-decrement (re-sent terminal transition),
+     * either of which would permanently skew surge for the cell.
+     */
+    @Column(name = "surge_pending_registered", nullable = false)
+    private boolean surgePendingRegistered;
+
+    /**
+     * A transition can now be driven by the rider <em>and</em> by the orchestrator's
+     * auto-transition. Optimistic locking turns a lost update into a detectable conflict.
+     */
+    @Version
+    @Column(name = "version", nullable = false)
+    private long version;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -148,6 +187,55 @@ public class TripEntity {
 
     public void setQuotedPrice(BigDecimal quotedPrice) {
         this.quotedPrice = quotedPrice;
+    }
+
+    public String getQuoteCurrency() {
+        return quoteCurrency;
+    }
+
+    public void setQuoteCurrency(String quoteCurrency) {
+        this.quoteCurrency = quoteCurrency;
+    }
+
+    public Map<String, Object> getQuoteBreakdown() {
+        return quoteBreakdown;
+    }
+
+    public void setQuoteBreakdown(Map<String, Object> quoteBreakdown) {
+        this.quoteBreakdown = quoteBreakdown;
+    }
+
+    public List<String> getDeclinedDriverIds() {
+        return declinedDriverIds == null ? List.of() : List.copyOf(declinedDriverIds);
+    }
+
+    public void setDeclinedDriverIds(List<String> declinedDriverIds) {
+        this.declinedDriverIds = declinedDriverIds == null ? new ArrayList<>() : new ArrayList<>(declinedDriverIds);
+    }
+
+    /** Records a decline. Idempotent, so a re-sent DRIVER_DECLINED cannot duplicate an entry. */
+    public void addDeclinedDriver(String driverId) {
+        if (driverId == null || driverId.isBlank()) {
+            return;
+        }
+        if (declinedDriverIds == null) {
+            declinedDriverIds = new ArrayList<>();
+        }
+        if (!declinedDriverIds.contains(driverId)) {
+            declinedDriverIds.add(driverId);
+        }
+    }
+
+    public boolean isSurgePendingRegistered() {
+        return surgePendingRegistered;
+    }
+
+    public void setSurgePendingRegistered(boolean surgePendingRegistered) {
+        this.surgePendingRegistered = surgePendingRegistered;
+    }
+
+    public long getVersion() {
+        return version;
     }
 
     public String getDriverId() {
