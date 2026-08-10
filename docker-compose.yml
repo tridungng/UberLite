@@ -71,6 +71,11 @@ services:
     depends_on:
       - trip-service-postgres
       - kafka
+      # Orchestration resolves these by service id through Eureka, so discovery must be up too.
+      - discovery-server
+      - price-estimation-service
+      - matching-service
+      - surge-pricing-service
 
   tax-tolls-postgres:
     image: postgres:15
