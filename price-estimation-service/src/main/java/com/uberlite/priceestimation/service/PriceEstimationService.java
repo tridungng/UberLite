@@ -1,6 +1,7 @@
 package com.uberlite.priceestimation.service;
 
 import com.uberlite.common.geo.H3Util;
+import com.uberlite.common.dto.RouteDto;
 import com.uberlite.priceestimation.api.PriceEstimateRequest;
 import com.uberlite.priceestimation.api.PriceQuoteDto;
 import com.uberlite.priceestimation.client.*;
@@ -78,7 +79,7 @@ public class PriceEstimationService {
                 throw new DependencyFailedException("tax-tolls-service failed (tax lookup): " + fe.getMessage());
             }
             double taxRate = ((Number) taxResp.getOrDefault("rate", 0.0)).doubleValue();
-            Map<String, Object> tollReq = Map.of("distanceKm", distanceKm);
+            RouteDto tollReq = new RouteDto((long) Math.round(distanceKm * 1000.0), java.util.List.of());
             Map<String, Object> tollResp = null;
             try {
                 tollResp = taxClient.estimateToll(tollReq);
