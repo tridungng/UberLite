@@ -149,6 +149,44 @@ class MatchingIntegrationTest {
     }
 
     @Test
+    @DisplayName("excludedDriverIds on the wire keeps the decliner out of the answer")
+    void honoursExclusionsFromTheRequestBody() throws Exception {
+        stubThreeDrivers();
+
+        // "near" is the outright winner; excluding it must promote the next best ("mid", 4.0 km).
+        mockMvc.perform(post("/matches").contentType(MediaType.APPLICATION_JSON).content("""
+                        {
+                          "tripId": "trip-1",
+                          "pickup": {"lat": 37.7749, "lon": -122.4194},
+                          "excludedDriverIds": ["near"]
+                        }
+                        """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.driverId").value("mid"));
+
+        // The excluded driver was never routed: 3 candidates - 1 excluded = 2 route calls.
+        assertThat(STUBS.countRequestsTo("/route/estimate")).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("every nearby driver excluded -> 404, so Trip Service can end the trip honestly")
+    void returnsNotFoundWhenAllCandidatesAreExcluded() throws Exception {
+        stubThreeDrivers();
+
+        mockMvc.perform(post("/matches").contentType(MediaType.APPLICATION_JSON).content("""
+                        {
+                          "tripId": "trip-1",
+                          "pickup": {"lat": 37.7749, "lon": -122.4194},
+                          "excludedDriverIds": ["near", "mid", "far"]
+                        }
+                        """))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.tripId").value("trip-1"));
+
+        assertThat(STUBS.countRequestsTo("/route/estimate")).isZero();
+    }
+
+    @Test
     @DisplayName("a blank tripId is rejected with 400 before any downstream call")
     void rejectsInvalidRequest() throws Exception {
         mockMvc.perform(post("/matches").contentType(MediaType.APPLICATION_JSON).content("""

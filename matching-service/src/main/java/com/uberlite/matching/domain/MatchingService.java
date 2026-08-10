@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Greedy nearest-available-driver matching (ARCHITECTURE.md Sec. 2, "MS"; paper Sec. 4.1).
@@ -22,9 +23,11 @@ import java.util.List;
  * <p>Flow: ask Driver Discovery for candidates around the pickup, price each one with a
  * Route Service distance + local straight-line ETA, return the lowest-ETA candidate.
  *
- * <p><b>Stateless by design.</b> This service does not remember which drivers already declined a
- * trip. Trip Service owns the retry budget (k=3) and the declined-driver list on the trip's
- * Postgres row, and re-calls {@code /matches} with the same {@code tripId}.
+ * <p><b>Stateless by design.</b> This service keeps no memory between calls: Trip Service owns the
+ * retry budget (k=3) and the durable declined-driver list on the trip's Postgres row. The exclusions
+ * travel <em>with</em> the request ({@code excludedDriverIds}) rather than being remembered here —
+ * necessary because greedy-nearest matching is deterministic and would otherwise re-propose the
+ * driver who just declined on every retry.
  *
  * <p><b>Swap-out point.</b> The paper specifies batch-optimal assignment over (rider, driver, route)
  * triplets. That replaces {@link #findBestMatch} wholesale: candidates would be buffered over a
@@ -52,13 +55,15 @@ public class MatchingService {
     }
 
     /**
-     * @return the candidate with the lowest pickup ETA
-     * @throws NoDriversAvailableException if Driver Discovery returned no usable candidate (-> 404)
+     * @return the eligible candidate with the lowest pickup ETA
+     * @throws NoDriversAvailableException if Driver Discovery returned no usable, non-excluded
+     *                                    candidate (-> 404)
      * @throws DependencyFailedException if a downstream service was unreachable (-> 502)
      */
     public DriverCandidateDto findBestMatch(MatchRequestDto request) {
         LocationDto pickup = request.getPickup();
-        List<DriverCandidateDto> candidates = fetchCandidates(request.getTripId(), pickup);
+        List<DriverCandidateDto> candidates =
+                eligible(request, fetchCandidates(request.getTripId(), pickup));
 
         if (candidates.isEmpty()) {
             throw new NoDriversAvailableException(request.getTripId());
@@ -99,6 +104,26 @@ public class MatchingService {
                     "driver-discovery-service",
                     "Could not fetch nearby drivers for trip " + tripId, e);
         }
+    }
+
+    /**
+     * Drops the drivers who already declined this trip, <em>before</em> the Route Service fan-out so
+     * we do not pay a network call to rank a candidate we cannot propose.
+     *
+     * <p>An empty result here is a genuine 404: "no driver is available for this trip" is just as
+     * true when the only nearby driver has already said no as when there is nobody there at all.
+     */
+    private List<DriverCandidateDto> eligible(MatchRequestDto request, List<DriverCandidateDto> candidates) {
+        Set<String> excluded = Set.copyOf(request.getExcludedDriverIds());
+        if (excluded.isEmpty()) {
+            return candidates;
+        }
+        List<DriverCandidateDto> eligible = candidates.stream()
+                .filter(candidate -> candidate == null || !excluded.contains(candidate.getDriverId()))
+                .toList();
+        log.info("Trip {}: {} of {} candidate(s) remain after excluding {} previous decliner(s)",
+                request.getTripId(), eligible.size(), candidates.size(), excluded.size());
+        return eligible;
     }
 
     /**

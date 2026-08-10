@@ -194,6 +194,59 @@ class MatchingServiceTest {
 
         assertThat(best.getDriverId()).isEqualTo("real");
     }
+
+    @Test
+    @DisplayName("an excluded driver is never proposed, even when they are the nearest")
+    void excludesPreviousDecliners() {
+        when(driverDiscoveryClient.nearby(anyDouble(), anyDouble(), anyDouble(), anyInt()))
+                .thenReturn(List.of(candidate("decliner", 1.0), candidate("next-best", 2.0)));
+        // The decliner is nearest and would win outright if we did not filter.
+        stubRoute(2.0, 5.0);
+
+        DriverCandidateDto best = matchingService.findBestMatch(
+                new MatchRequestDto("trip-1", PICKUP, List.of("decliner")));
+
+        assertThat(best.getDriverId()).isEqualTo("next-best");
+    }
+
+    @Test
+    @DisplayName("excluded candidates are dropped before the Route Service fan-out")
+    void doesNotPayForRoutingExcludedCandidates() {
+        when(driverDiscoveryClient.nearby(anyDouble(), anyDouble(), anyDouble(), anyInt()))
+                .thenReturn(List.of(candidate("decliner", 1.0), candidate("next-best", 2.0)));
+        stubRoute(2.0, 5.0);
+
+        matchingService.findBestMatch(new MatchRequestDto("trip-1", PICKUP, List.of("decliner")));
+
+        // Only the eligible candidate cost us a network call.
+        verify(routeServiceClient, never()).estimate(eq(1.0), anyDouble(), anyDouble(), anyDouble());
+        verify(routeServiceClient).estimate(eq(2.0), anyDouble(), anyDouble(), anyDouble());
+    }
+
+    @Test
+    @DisplayName("every nearby driver already declined -> 404, not a re-proposal")
+    void returnsNoDriversWhenEveryCandidateIsExcluded() {
+        when(driverDiscoveryClient.nearby(anyDouble(), anyDouble(), anyDouble(), anyInt()))
+                .thenReturn(List.of(candidate("a", 1.0), candidate("b", 2.0)));
+
+        assertThatThrownBy(() -> matchingService.findBestMatch(
+                new MatchRequestDto("trip-1", PICKUP, List.of("a", "b"))))
+                .isInstanceOf(NoDriversAvailableException.class);
+        verify(routeServiceClient, never()).estimate(anyDouble(), anyDouble(), anyDouble(), anyDouble());
+    }
+
+    @Test
+    @DisplayName("an absent excludedDriverIds behaves as an empty list")
+    void nullExclusionListIsTreatedAsEmpty() {
+        when(driverDiscoveryClient.nearby(anyDouble(), anyDouble(), anyDouble(), anyInt()))
+                .thenReturn(List.of(candidate("only", 1.0)));
+        stubRoute(1.0, 1.0);
+
+        DriverCandidateDto best = matchingService.findBestMatch(
+                new MatchRequestDto("trip-1", PICKUP, null));
+
+        assertThat(best.getDriverId()).isEqualTo("only");
+    }
 }
 
 

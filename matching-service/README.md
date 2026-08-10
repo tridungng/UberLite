@@ -9,8 +9,14 @@ Stateless — no datastore. It calls out to `driver-discovery-service` and `rout
 ### `POST /matches`
 
 ```json
-{ "tripId": "trip-1", "pickup": { "lat": 37.7749, "lon": -122.4194 } }
+{
+  "tripId": "trip-1",
+  "pickup": { "lat": 37.7749, "lon": -122.4194 },
+  "excludedDriverIds": ["driver-3"]
+}
 ```
+
+`excludedDriverIds` is optional; absent means "nobody has declined yet".
 
 **200** — the best `DriverCandidateDto`:
 
@@ -22,13 +28,13 @@ Stateless — no datastore. It calls out to `driver-discovery-service` and `rout
 |---|---|
 | 200 | A driver was proposed |
 | 400 | Invalid body (blank `tripId`, missing/out-of-range `pickup`) |
-| 404 | No drivers available near the pickup — a real, retryable answer |
+| 404 | No eligible driver near the pickup |
 | 502 | A downstream service was unreachable |
 
 **404 vs 502 matters.** A fallback that returned an empty driver list on a Driver Discovery outage
-would make an infrastructure failure look like an empty marketplace, and Trip Service would burn its
-k=3 retry budget and park the trip in `UNMATCHED` for the wrong reason. So the Feign clients have no
-fallback and outages surface as 502.
+would make an infrastructure failure look like an empty marketplace, and Trip Service would park the
+trip in `UNMATCHED` for the wrong reason. So the Feign clients have no fallback and outages surface
+as 502.
 
 For the same reason the service only treats `FeignException` as a dependency failure. A bug in our own
 code (an NPE, say) propagates and becomes an honest 500 rather than being mislabelled "Driver
@@ -38,12 +44,16 @@ Discovery is down".
 
 1. `GET /drivers/nearby` on driver-discovery-service around the pickup (`matching.radius-meters`,
    `matching.candidate-limit`).
-2. For each candidate, `GET /route/estimate` on route-service for the driver → pickup distance, then
-   a local straight-line ETA at `matching.average-speed-mps`.
-3. Return the candidate with the lowest pickup ETA (ties broken by `driverId` for determinism).
+2. Drop any `excludedDriverIds` — before step 3, so we don't pay a route call to rank a driver we
+   can't propose.
+3. For each remaining candidate, `GET /route/estimate` on route-service for the driver → pickup
+   distance, then a local straight-line ETA at `matching.average-speed-mps`.
+4. Return the candidate with the lowest pickup ETA (ties broken by `driverId` for determinism).
 
 A candidate that can't be scored is skipped rather than failing the request. If candidates existed
-but *none* could be scored, that's a 502, not a 404.
+but *none* could be scored, that's a 502, not a 404. If every candidate was excluded, that *is* a
+404 — "no driver is available for this trip" is equally true when the only nearby driver already
+said no.
 
 `time-estimation-service` is deliberately **not** called: this ETA only has to *rank* candidates, and
 it is monotonic in distance, so it orders them identically to a traffic-aware ETA at N fewer network
@@ -60,16 +70,20 @@ calls. The rider-facing ETA remains TES's job.
 
 Port `8089`. Health at `/actuator/health`. Profile `docker` for Compose.
 
-## Declined drivers are Trip Service's job
+## Declined drivers: state stays in Trip Service, exclusions travel on the request
 
-This service does **not** track exclusions. It has no memory of which driver it proposed a moment
-ago. Trip Service owns the retry budget (k=3, ARCHITECTURE.md Sec. 3) and the declined-driver list on
-the trip's Postgres row, and simply re-calls `POST /matches` with the same `tripId`.
+This service keeps **no memory** between calls. Trip Service owns the retry budget (k=3,
+ARCHITECTURE.md Sec. 3) and the durable declined-driver list on the trip's Postgres row.
 
-Consequence, and it is a real MVP limitation: on a retry this service will happily re-propose the
-driver who just declined, because from its point of view nothing has changed. Trip Service must
-filter the response against its own declined list. The fix when it matters is an `excludedDriverIds`
-field on `MatchRequestDto` — deliberately left out here because issue 02/09 owns the retry logic.
+But the exclusions must be *sent*, not remembered. Greedy-nearest matching is deterministic: given
+the same driver pool it returns the same driver every time, so a retry that didn't carry
+`excludedDriverIds` would re-propose the driver who just declined, on every attempt, until the budget
+was exhausted — the decline-and-retry flow could never succeed. Passing them keeps this service
+stateless while letting it pick the best *eligible* driver rather than an answer the caller has to
+throw away.
+
+Trip Service re-checks the response against its own list regardless, because ARCHITECTURE.md Sec. 4
+makes it ultimately responsible for never proposing a decliner twice.
 
 ## Swap-out point
 
