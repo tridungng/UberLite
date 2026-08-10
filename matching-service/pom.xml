@@ -25,6 +25,12 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
+        <!-- Bean Validation engine, for @Valid on the match request and @Validated on MatchingProperties. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-openfeign</artifactId>
@@ -43,6 +49,18 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!--
+          Shared HTTP stub server for the downstream services (see common's test-jar). WireMock is
+          deliberately NOT used — it cannot run on this classpath; the reason is documented on
+          StubServer itself.
+        -->
+        <dependency>
+            <groupId>com.uberlite</groupId>
+            <artifactId>common</artifactId>
+            <type>test-jar</type>
             <scope>test</scope>
         </dependency>
     </dependencies>

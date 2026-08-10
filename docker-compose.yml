@@ -196,6 +196,8 @@ services:
     ports:
       - "8089:8089"
     depends_on:
+      # Needs Eureka: both downstream calls are resolved by service id, not host name.
+      - discovery-server
       - driver-discovery-service
       - route-service
 
