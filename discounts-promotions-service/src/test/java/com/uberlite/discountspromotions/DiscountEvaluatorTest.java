@@ -1,57 +1,53 @@
 package com.uberlite.discountspromotions;
 
 import com.uberlite.discountspromotions.domain.DiscountEvaluator;
+import com.uberlite.discountspromotions.domain.DiscountRuleFactory;
 import com.uberlite.discountspromotions.repository.PromoRuleEntity;
 import com.uberlite.discountspromotions.repository.PromoRuleRepository;
-
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.util.List;
 
-@SpringBootTest
-@Testcontainers
-public class DiscountEvaluatorTest {
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.when;
 
-    @Container
-    public static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15")
-            .withDatabaseName("discountsdb")
-            .withUsername("uberlite")
-            .withPassword("changeme");
+@ExtendWith(MockitoExtension.class)
+class DiscountEvaluatorTest {
+    @Mock
+    private PromoRuleRepository promoRuleRepository;
 
-    @DynamicPropertySource
-    static void datasourceProps(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", postgres::getJdbcUrl);
-        registry.add("spring.datasource.username", postgres::getUsername);
-        registry.add("spring.datasource.password", postgres::getPassword);
-    }
+    private DiscountEvaluator evaluator;
 
-    @Autowired
-    PromoRuleRepository repo;
-
-    @Autowired
-    DiscountEvaluator evaluator;
-
-    @Test
-    void seeded_rule_matches_new_rider() {
-        // ensure seeded rule exists
-        PromoRuleEntity r = repo.findById("new-rider-first3").orElseThrow();
-        assertThat(r.getDiscountPct()).isEqualTo(new BigDecimal("0.20"));
-
-        double pct = evaluator.evaluate("rider-1", 0);
-        assertThat(pct).isEqualTo(0.20);
+    @BeforeEach
+    void setUp() {
+        evaluator = new DiscountEvaluator(promoRuleRepository, new DiscountRuleFactory(new com.fasterxml.jackson.databind.ObjectMapper()));
     }
 
     @Test
-    void seeded_rule_not_match_on_trip_count_equal() {
-        double pct = evaluator.evaluate("rider-1", 3);
-        assertThat(pct).isEqualTo(0.0);
+    void seededRuleMatchesNewRider() {
+        when(promoRuleRepository.findAll()).thenReturn(List.of(seedRule()));
+
+        assertThat(evaluator.evaluate("rider-1", 0)).isEqualTo(0.20);
+    }
+
+    @Test
+    void seededRuleDoesNotMatchAtThreshold() {
+        when(promoRuleRepository.findAll()).thenReturn(List.of(seedRule()));
+
+        assertThat(evaluator.evaluate("rider-1", 3)).isEqualTo(0.0);
+    }
+
+    private static PromoRuleEntity seedRule() {
+        PromoRuleEntity entity = new PromoRuleEntity();
+        entity.setId("new-rider-first3");
+        entity.setDescription("New rider first 3 trips");
+        entity.setDiscountPct(new BigDecimal("0.20"));
+        entity.setConditionJson("{\"type\":\"NEW_RIDER_TRIP_COUNT_LT\",\"value\":3}");
+        return entity;
     }
 }
