@@ -1,6 +1,27 @@
 spring:
   application:
     name: price-estimation-service
+  cloud:
+    openfeign:
+      client:
+        config:
+          # A quote is a synchronous, rider-facing call: fail fast rather than hold the request
+          # thread while a sick dependency times out at the socket level.
+          default:
+            connectTimeout: 2000
+            readTimeout: 3000
+            loggerLevel: basic
+
+# Paper Sec. 2 / ARCHITECTURE.md Sec. 8: p = ((cd*d + ct*t) * s + cm) * (1 - discountPct) * (1 + taxRate)
+# cd/ct are business levers and must be tunable without a rebuild.
+pricing:
+  cost-per-km: 1.5          # cd, currency units per kilometre
+  cost-per-minute: 0.3      # ct, currency units per minute
+  # Route Service only returns a detourFactor when given an observed distance, which we don't have
+  # at quote time. This is the straight-line -> road-distance correction applied instead.
+  default-detour-factor: 1.3
+  region-id: default        # MVP is single-region (ARCHITECTURE.md Sec. 9)
+  currency: USD
 
 server:
   port: 8085
@@ -21,3 +42,18 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+
+---
+# Profile used by docker-compose.yml. Without this the service kept pointing at localhost:8761 and
+# never found its dependencies inside the Compose network.
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://discovery-server:8761/eureka/
+  instance:
+    prefer-ip-address: true
