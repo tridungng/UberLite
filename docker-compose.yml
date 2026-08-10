@@ -206,15 +206,50 @@ services:
       - driver-discovery-service
       - route-service
 
+  forecasting-postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: forecastingdb
+      POSTGRES_USER: uberlite
+      POSTGRES_PASSWORD: changeme
+    ports:
+      - "5436:5432"
+    volumes:
+      - forecasting-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U uberlite -d forecastingdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   forecasting-service:
     build:
       context: .
       dockerfile: forecasting-service/Dockerfile
     environment:
       - SPRING_PROFILES_ACTIVE=docker
+    ports:
+      - "8092:8092"
     depends_on:
+      - forecasting-postgres
       - kafka
-      - redis
+      - discovery-server
+
+  matching-analytics-postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: matchinganalyticsdb
+      POSTGRES_USER: uberlite
+      POSTGRES_PASSWORD: changeme
+    ports:
+      - "5437:5432"
+    volumes:
+      - matching-analytics-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U uberlite -d matchinganalyticsdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   matching-analytics-service:
     build:
@@ -225,8 +260,25 @@ services:
     ports:
       - "8093:8093"
     depends_on:
+      - matching-analytics-postgres
       - kafka
       - discovery-server
+
+  discounts-analytics-postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: discountsanalyticsdb
+      POSTGRES_USER: uberlite
+      POSTGRES_PASSWORD: changeme
+    ports:
+      - "5438:5432"
+    volumes:
+      - discounts-analytics-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U uberlite -d discountsanalyticsdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   discounts-analytics-service:
     build:
@@ -237,10 +289,16 @@ services:
     ports:
       - "8094:8094"
     depends_on:
-      - kafka
+      - discounts-analytics-postgres
+      # No Kafka: this one is a nightly batch that pulls counts from Trip Service, which it
+      # resolves by service id, so Eureka is required and the broker is not.
       - discovery-server
+      - trip-service
 
 volumes:
   trip-service-db-data:
   tax-tolls-db-data:
   discounts-db-data:
+  forecasting-db-data:
+  matching-analytics-db-data:
+  discounts-analytics-db-data:
