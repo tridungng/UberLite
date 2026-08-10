@@ -7,7 +7,7 @@ description rather than silently resolving it.
 
 ## Stack & conventions
 
-- Java 26, Spring Boot 4.x, Maven multi-module build (root `pom.xml` with <modules> listing every
+- Java 25, Spring Boot 4.x, Maven multi-module build (root `pom.xml` with <modules> listing every
   service module).
 - Each service is independently runnable (`mvn -pl trip-service spring-boot:run`) and independently
   testable (`mvn -pl trip-service test`).

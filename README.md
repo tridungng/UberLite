@@ -2,7 +2,7 @@
 
 Minimal scaffold for the UberLite MVP implementing the *Designing UberLite: a Ride Aggregator Service* paper (Prasaad & Vikström, UW CSE552, Fall 2019).
 
-**Stack:** Java 27, Spring Boot 4.x, Maven 3.9+, Docker Compose
+**Stack:** Java 25, Spring Boot 4.x, Maven 3.9+, Docker Compose
 
 ## Architecture Overview
 
@@ -18,7 +18,7 @@ See `ARCHITECTURE.md` for the complete service decomposition, data models, and A
 ## Quick Start
 
 ### Prerequisites
-- JDK 27+
+- JDK 25
 - Maven 3.9+
 - Docker & Docker Compose
 
@@ -91,8 +91,9 @@ mvn -pl price-estimation-service spring-boot:run
    3d. Price Estimation → Tax & Tolls Service (rates)
    3e. Price Estimation → Discounts Service (promo)
 4. Trip Service publishes Kafka event (state → PRICED)
-5. Trip Service → Matching Service (find driver)
+5. Trip Service → Matching Service (POST /matches → best driver, or 404 if none)
    5a. Matching → Driver Discovery Service (nearby drivers)
+   5b. Matching → Route Service (per candidate, pickup ETA)
 6. Trip Service publishes Kafka event (state → DRIVER_PROPOSED)
 7. Matching Analytics Service (Kafka consumer) logs the match
 8. Discounts Analytics Service (Kafka consumer) checks for promo eligibility
@@ -226,6 +227,28 @@ mvn -pl <service> -Dgroups=integration test
 mvn clean install
 ```
 
+### Stubbing downstream services
+
+Services that call other services over Feign (Price Estimation, Matching) are tested against
+`StubServer`, a small record-and-replay HTTP server shipped in `common`'s **test-jar**:
+
+```xml
+<dependency>
+    <groupId>com.uberlite</groupId>
+    <artifactId>common</artifactId>
+    <type>test-jar</type>
+    <scope>test</scope>
+</dependency>
+```
+
+It serves real HTTP on a random port, so the real Feign clients, JSON codecs and URLs are exercised —
+which is what catches a `@FeignClient` whose path disagrees with the downstream route.
+
+**WireMock is deliberately not used.** It cannot run on this classpath: `wiremock-jre8` embeds Jetty
+9.4, which needs the pre-Jakarta `javax.servlet` API that Spring Boot 4 has dropped, and once that is
+patched it fails on `org.eclipse.jetty.util.log.Log`, a class deleted in Jetty 10 (Boot 4 manages
+Jetty 12). The full rationale is documented on `StubServer` itself. Don't re-add the dependency.
+
 ## Build & Deployment
 
 ### Build a single service
@@ -239,9 +262,12 @@ mvn clean install
 ```
 
 ### Docker images
-Each service has a `Dockerfile` using multi-stage build:
-1. Build stage: Compile with Maven in `openjdk:27-slim`
-2. Runtime stage: Copy JAR, run with minimal JRE
+Every service uses the same two-stage build:
+1. Build stage: `maven:3.9-eclipse-temurin-25` — compiles the module with `-pl <module> -am`
+2. Runtime stage: `eclipse-temurin:25-jre` — copies the fat JAR only
+
+The Java version is set once in the root `pom.xml` (`<java.version>25</java.version>`) and must match
+the base image tags above. Keep the three in sync when upgrading.
 
 Build a single service image:
 ```bash

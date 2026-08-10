@@ -1,6 +1,6 @@
 # UberLite MVP — Architecture Spec
 
-Stack: Java 27, Spring Boot 4.x, Maven multi-module
+Stack: Java 25, Spring Boot 4.x, Maven multi-module
 
 Source: *Designing UberLite: a Ride Aggregator Service* (Prasaad & Vikström, UW CSE552, Fall 2019).
 This document is the MVP interpretation of that paper: same services, same trip state machine,
@@ -92,6 +92,27 @@ Driver app accepts/declines → Trip Service
 Trip Service --Kafka(trip-events)--> Matching Analytics, Discounts Analytics (async, fire-and-forget)
 ```
 
+### Matching Service contract
+
+`POST /matches` — body `{tripId, pickup: {lat, lon}}` → `DriverCandidateDto` `{driverId, location,
+etaSeconds}`.
+
+| Status | Meaning | Trip Service should |
+|---|---|---|
+| 200 | A driver was proposed | move to `DRIVER_PROPOSED` |
+| 400 | Invalid body | fix the caller; not retryable |
+| 404 | No drivers near the pickup | count one attempt against k=3, retry/back off |
+| 502 | A downstream service is unreachable | retry **without** consuming an attempt |
+
+The 404/502 split is load-bearing. Matching's Feign clients have no fallback on purpose: a fallback
+returning an empty driver list would make an outage look like an empty marketplace, and Trip Service
+would burn its retry budget and park the trip in `UNMATCHED` for an infrastructure reason.
+
+**Matching is stateless and tracks no exclusions.** Trip Service owns the retry budget and the list of
+drivers who already declined (on the trip row), and re-calls `/matches` with the same `tripId`. It
+must filter the response against that list, because Matching will otherwise happily re-propose the
+driver who just declined.
+
 ## 5. Infrastructure
 
 | Concern | Choice | Why |
@@ -103,7 +124,7 @@ Trip Service --Kafka(trip-events)--> Matching Analytics, Discounts Analytics (as
 | Trip store | Postgres (one schema per service — no shared DB) | Durable, queryable, "database per service" |
 | Geospatial / hot data | Redis | Driver locations, surge multipliers — matches paper's "Realtime, Severe staleness" services |
 | Local orchestration | Docker Compose | One `docker-compose up` boots Eureka, Gateway, Kafka+Zookeeper, Postgres (per service), Redis, all app services |
-| Build | Gradle multi-module (or Maven multi-module — pick one in issue 00) | Shared `common` module for DTOs + H3 helpers |
+| Build | Maven multi-module (decided in issue 00; Gradle was the alternative) | Shared `common` module for DTOs + H3 helpers, plus a test-jar with shared test infrastructure |
 | Observability (stretch) | Spring Boot Actuator + Micrometer + Zipkin | Not MVP-blocking, see issue 11 |
 
 ## 6. Repo layout
