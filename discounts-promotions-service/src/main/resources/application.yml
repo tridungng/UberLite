@@ -1,11 +1,9 @@
-spring:
-  application:
-    name: discounts-promotions-service
-
 server:
   port: 8091
 
 spring:
+  application:
+    name: discounts-promotions-service
   datasource:
     url: jdbc:postgresql://discounts-postgres:5432/discountsdb
     username: uberlite
