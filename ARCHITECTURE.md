@@ -67,10 +67,21 @@ REQUESTED
    → PAID
 ```
 
+`UNMATCHED` is also reachable directly from `ACCEPTED_BY_RIDER`: the *first* call to Matching can
+already come back "no drivers", and there is no driver to decline in that case. It is terminal —
+the rider's retry is to request a new trip, which is the normal "no cars available" flow in a
+ride-hailing app, not an internal loop.
+
 Each transition is a Postgres row update inside Trip Service **and** a Kafka message on topic
 `trip-events` with `{tripId, fromState, toState, timestamp, payload}`. This is the paper's
 trigger framework: any service can subscribe to `trip-events` without Trip Service knowing who's
-listening (Matching Analytics and Discounts Analytics both do this).
+listening (Matching Analytics and Discounts Analytics both do this). Trip creation is published as
+the `null → REQUESTED` transition, so a consumer never sees a history that begins mid-trip. The
+payload keys are defined once in `common` (`TripEventPayloadKeys`) and never inlined.
+
+`PRICED`, `DRIVER_PROPOSED` and `UNMATCHED` are *conclusions* drawn from a downstream answer, not
+states a client may assert. `POST /trips/{id}/transition` rejects them with `409`; they are produced
+only by the orchestration below.
 
 ## 4. Service-to-service call graph
 
@@ -83,35 +94,51 @@ Trip Service → Price Estimation Service
   Price Estimation → Tax & Tolls Service
   Price Estimation → Discounts & Promotions Service
 Trip Service ← price quote ← Price Estimation           [state → PRICED]
+Trip Service → Surge Pricing (pending-request ++)        [rider now waiting in this H3 cell]
 Rider accepts → Trip Service [state → ACCEPTED_BY_RIDER]
 Trip Service → Matching Service
   Matching → Driver Discovery Service (candidate drivers near pickup H3 cell)
   Matching → Route Service (per candidate, pickup ETA)
 Trip Service ← proposed driver ← Matching                [state → DRIVER_PROPOSED]
 Driver app accepts/declines → Trip Service
+Trip Service → Surge Pricing (pending-request --)        [on COMPLETED / CANCELLED_BY_RIDER / UNMATCHED]
 Trip Service --Kafka(trip-events)--> Matching Analytics, Discounts Analytics (async, fire-and-forget)
 ```
 
+The pending-request counter is the demand half of the surge signal — Trip Service is the only
+component that knows how many riders are actually waiting in a cell. The calls are best effort and
+guarded by a flag on the trip row so they cannot double-count: a stale multiplier is an acceptable
+failure, a rider who cannot book because Surge Pricing is unwell is not.
+
 ### Matching Service contract
 
-`POST /matches` — body `{tripId, pickup: {lat, lon}}` → `DriverCandidateDto` `{driverId, location,
-etaSeconds}`.
+`POST /matches` — body `{tripId, pickup: {lat, lon}, excludedDriverIds: [...]}` → `DriverCandidateDto`
+`{driverId, location, etaSeconds}`.
 
 | Status | Meaning | Trip Service should |
 |---|---|---|
 | 200 | A driver was proposed | move to `DRIVER_PROPOSED` |
 | 400 | Invalid body | fix the caller; not retryable |
-| 404 | No drivers near the pickup | count one attempt against k=3, retry/back off |
+| 404 | No eligible driver near the pickup | move to `UNMATCHED` (terminal) and notify the rider |
 | 502 | A downstream service is unreachable | retry **without** consuming an attempt |
 
 The 404/502 split is load-bearing. Matching's Feign clients have no fallback on purpose: a fallback
 returning an empty driver list would make an outage look like an empty marketplace, and Trip Service
-would burn its retry budget and park the trip in `UNMATCHED` for an infrastructure reason.
+would park the trip in `UNMATCHED` for an infrastructure reason.
 
-**Matching is stateless and tracks no exclusions.** Trip Service owns the retry budget and the list of
-drivers who already declined (on the trip row), and re-calls `/matches` with the same `tripId`. It
-must filter the response against that list, because Matching will otherwise happily re-propose the
-driver who just declined.
+**404 ends the trip rather than being retried in place.** An immediate retry cannot change the
+answer — Driver Discovery's state does not move within a request — and a *delayed* retry would need
+a scheduler, which is not in §5. So the retry for an empty marketplace belongs to the rider (request
+a new trip), while the k=3 budget covers the case the paper actually describes: a driver was found
+and *declined*.
+
+**Matching holds no state between calls, but exclusions travel with the request.** Trip Service owns
+the retry budget (k=3) and the durable declined-driver list on the trip row, and sends it as
+`excludedDriverIds` on every retry. This is required, not an optimisation: greedy-nearest matching is
+deterministic, so a retry without exclusions returns the same driver who just declined, every time.
+Matching filters them out *before* the per-candidate Route Service fan-out, and answers 404 if
+nothing eligible remains. Trip Service re-checks the response against its own list anyway, since it
+is ultimately responsible for never proposing a decliner twice.
 
 ## 5. Infrastructure
 
