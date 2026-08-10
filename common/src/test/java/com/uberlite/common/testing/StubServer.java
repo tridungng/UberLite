@@ -1,4 +1,4 @@
-package com.uberlite.priceestimation.support;
+package com.uberlite.common.testing;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -11,17 +11,35 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Function;
 
 /**
- * A minimal record-and-replay HTTP stub server for the downstream services, built on the JDK's
- * {@link HttpServer}.
+ * A minimal record-and-replay HTTP stub server for downstream services, built on the JDK's
+ * {@link HttpServer}. Shipped in {@code common}'s test-jar so services share one copy.
  *
- * <p>This plays the role WireMock plays in the issue's acceptance criteria: real sockets, real HTTP,
+ * <p>This plays the role WireMock plays in the issues' acceptance criteria: real sockets, real HTTP,
  * real JSON, so the Feign encoders/decoders and the URL/verb of every {@code @FeignClient} are
  * genuinely exercised — a client annotation that disagrees with a downstream route fails the test.
- * It is used in preference to WireMock because WireMock 3.x embeds Jetty 11 while Spring Boot 4
- * manages Jetty 12, and the two are binary-incompatible on the test classpath. The API below is
- * deliberately WireMock-shaped so the swap is mechanical if that conflict is ever resolved.
+ *
+ * <h2>Why not WireMock</h2>
+ *
+ * <p>WireMock cannot run on this classpath, and the failure is not configurable away:
+ *
+ * <ul>
+ *   <li>{@code wiremock-jre8:2.35.x} embeds Jetty 9.4, which requires the pre-Jakarta
+ *       {@code javax.servlet} API. Spring Boot 4 is Jakarta-only, so it fails with
+ *       {@code NoClassDefFoundError: javax/servlet/DispatcherType}.
+ *   <li>Adding {@code javax.servlet-api} back gets one step further and then fails with
+ *       {@code NoClassDefFoundError: org.eclipse.jetty.util.log.Log} — a class deleted in Jetty 10.
+ *       Spring Boot 4 manages Jetty 12, so {@code jetty-util} resolves to 12.x and that class is
+ *       simply gone.
+ *   <li>Fixing that would mean pinning Jetty back to 9.4 for the whole module, breaking anything
+ *       else that expects the managed Jetty. Not a trade worth making for a test double.
+ *   <li>The shaded {@code wiremock-standalone} artifact relocates its own Jetty and would work, but
+ *       is not available in this environment's artifact mirror.
+ * </ul>
+ *
+ * <p>The API below is deliberately WireMock-shaped so the swap is mechanical if that ever changes.
  */
 public final class StubServer implements AutoCloseable {
 
@@ -41,6 +59,12 @@ public final class StubServer implements AutoCloseable {
 
     private final HttpServer server;
     private final Map<String, Stub> stubs = new ConcurrentHashMap<>();
+    /**
+     * Query-aware responders, keyed by path. Needed when a service calls one path repeatedly with
+     * different parameters — e.g. Matching calls {@code /route/estimate} once per candidate, where
+     * only the query string distinguishes "driver A is 9 km away" from "driver B is 1.5 km away".
+     */
+    private final Map<String, Function<String, Stub>> dynamicStubs = new ConcurrentHashMap<>();
     private final List<RecordedRequest> requests = new CopyOnWriteArrayList<>();
     /** Paths that should drop the connection, simulating an unreachable dependency. */
     private final Map<String, Boolean> faults = new ConcurrentHashMap<>();
@@ -69,6 +93,15 @@ public final class StubServer implements AutoCloseable {
         return this;
     }
 
+    /**
+     * Registers a responder that sees the raw query string, for paths called repeatedly with
+     * different parameters.
+     */
+    public StubServer stubByQuery(String path, Function<String, Stub> responder) {
+        dynamicStubs.put(path, responder);
+        return this;
+    }
+
     /** Makes the given path drop the connection without replying. */
     public StubServer failConnection(String path) {
         faults.put(path, Boolean.TRUE);
@@ -77,6 +110,7 @@ public final class StubServer implements AutoCloseable {
 
     public void reset() {
         stubs.clear();
+        dynamicStubs.clear();
         faults.clear();
         requests.clear();
     }
@@ -91,7 +125,7 @@ public final class StubServer implements AutoCloseable {
         if (matches.size() != 1) {
             throw new AssertionError("Expected exactly 1 request to " + path + " but got " + matches.size());
         }
-        return matches.get(0);
+        return matches.getFirst();
     }
 
     public long countRequestsTo(String path) {
@@ -106,6 +140,13 @@ public final class StubServer implements AutoCloseable {
 
         if (faults.containsKey(path)) {
             exchange.close(); // connection reset — the dependency is unreachable
+            return;
+        }
+
+        Function<String, Stub> responder = dynamicStubs.get(path);
+        if (responder != null) {
+            Stub dynamic = responder.apply(exchange.getRequestURI().getQuery());
+            respond(exchange, dynamic.status(), dynamic.body());
             return;
         }
 
@@ -130,4 +171,5 @@ public final class StubServer implements AutoCloseable {
         server.stop(0);
     }
 }
+
 

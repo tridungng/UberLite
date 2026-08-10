@@ -22,9 +22,7 @@
         <spring-cloud.version>2025.1.2</spring-cloud.version>
         <h3.version>4.4.0</h3.version>
         <flyway.version>12.4.0</flyway.version>
-        <javax.servlet.version>4.0.1</javax.servlet.version>
         <testcontainers.version>1.21.4</testcontainers.version>
-        <wiremock.version>2.35.0</wiremock.version>
     </properties>
 
     <modules>
@@ -64,10 +62,13 @@
                 <artifactId>common</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <!-- Shared test infrastructure (StubServer); see common/pom.xml. -->
             <dependency>
-                <groupId>com.github.tomakehurst</groupId>
-                <artifactId>wiremock-jre8</artifactId>
-                <version>${wiremock.version}</version>
+                <groupId>com.uberlite</groupId>
+                <artifactId>common</artifactId>
+                <version>${project.version}</version>
+                <type>test-jar</type>
+                <scope>test</scope>
             </dependency>
             <dependency>
                 <groupId>org.testcontainers</groupId>
@@ -88,11 +89,6 @@
                 <groupId>org.flywaydb</groupId>
                 <artifactId>flyway-database-postgresql</artifactId>
                 <version>${flyway.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>javax.servlet</groupId>
-                <artifactId>javax.servlet-api</artifactId>
-                <version>${javax.servlet.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

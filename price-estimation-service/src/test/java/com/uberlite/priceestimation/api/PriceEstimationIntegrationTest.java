@@ -1,8 +1,8 @@
 package com.uberlite.priceestimation.api;
 
 import com.uberlite.common.geo.H3Util;
-import com.uberlite.priceestimation.support.StubServer;
-import com.uberlite.priceestimation.support.StubServer.Stub;
+import com.uberlite.common.testing.StubServer;
+import com.uberlite.common.testing.StubServer.Stub;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;

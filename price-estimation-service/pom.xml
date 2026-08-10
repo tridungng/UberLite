@@ -52,6 +52,14 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- Shared HTTP stub server for downstream services; see common/pom.xml. -->
+        <dependency>
+            <groupId>com.uberlite</groupId>
+            <artifactId>common</artifactId>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
 
     <build>
