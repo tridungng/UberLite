@@ -18,8 +18,11 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@Testcontainers
-@SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
+@Testcontainers(disabledWithoutDocker = true)
+@SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT, properties = {
+        "eureka.client.enabled=false",
+        "spring.cloud.discovery.enabled=false"
+})
 public class TaxTollsIntegrationTest {
 
     @Container
@@ -57,6 +60,6 @@ public class TaxTollsIntegrationTest {
         assertThat(resp.getStatusCode().is2xxSuccessful()).isTrue();
         Map<String, Object> body = resp.getBody();
         assertThat(body).containsEntry("regionId", "CA");
-        assertThat(body).containsKey("rate");
+        assertThat(((Number) body.get("rate")).doubleValue()).isEqualTo(0.0725);
     }
 }

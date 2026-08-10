@@ -9,7 +9,11 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
+import java.util.Optional;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class TaxTollLookupTest {
@@ -24,6 +28,11 @@ class TaxTollLookupTest {
 
     @Test
     void lookupByRegionReturnsTaxAndToll() {
+        when(taxRateRepository.findById("CA"))
+                .thenReturn(Optional.of(new com.uberlite.taxtolls.repository.entity.TaxRateEntity("CA", new BigDecimal("0.0725"))));
+        when(tollSegmentRepository.findById("CA-DEFAULT"))
+                .thenReturn(Optional.of(new com.uberlite.taxtolls.repository.entity.TollSegmentEntity("CA-DEFAULT", new BigDecimal("2.50"))));
+
         TaxTollInfo info = lookup.lookupByRegion("CA");
 
         assertEquals("CA", info.region);
@@ -33,6 +42,9 @@ class TaxTollLookupTest {
 
     @Test
     void lookupByRegionDefaultsForUnknownRegion() {
+        when(taxRateRepository.findById("XX")).thenReturn(Optional.empty());
+        when(tollSegmentRepository.findById("XX-DEFAULT")).thenReturn(Optional.empty());
+
         TaxTollInfo info = lookup.lookupByRegion("XX");
 
         assertEquals("XX", info.region);
