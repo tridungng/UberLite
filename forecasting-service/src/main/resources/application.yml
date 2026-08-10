@@ -1,17 +1,42 @@
+server:
+  port: 8092
+
 spring:
   application:
     name: forecasting-service
+  datasource:
+    url: jdbc:postgresql://localhost:5436/forecastingdb
+    username: uberlite
+    password: changeme
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
   kafka:
     bootstrap-servers: localhost:9092
     consumer:
-      group-id: forecasting-group
+      group-id: forecasting-service
+      # Analytics services join a stream that is already running; without this a fresh consumer
+      # group would silently skip every event published before it first booted.
+      auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JacksonJsonDeserializer
       properties:
-        spring.json.trusted.packages: "*"
+        # Trip Service publishes with noTypeInfo(), so there is no __TypeId__ header to read and
+        # the target type has to be named here instead. Without the pair of these the payload
+        # silently deserialises to a Map and the listener signature stops matching.
+        spring.json.use.type.headers: false
+        spring.json.value.default.type: com.uberlite.common.events.TripEvent
+        # Narrower than "*": only the shared event package is trusted.
+        spring.json.trusted.packages: com.uberlite.common.events
 
-server:
-  port: 8092
+forecasting:
+  # A full weekly cycle, so a Saturday forecast is not diluted by five weekdays.
+  window-days: 7
+  # Demand is a wall-clock phenomenon; single-region MVP (ARCHITECTURE.md Sec. 9), so one zone.
+  zone: UTC
 
 eureka:
   client:
@@ -29,3 +54,21 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+  datasource:
+    url: jdbc:postgresql://forecasting-postgres:5432/forecastingdb
+  kafka:
+    bootstrap-servers: kafka:9092
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://discovery-server:8761/eureka/
+  instance:
+    prefer-ip-address: true
+
