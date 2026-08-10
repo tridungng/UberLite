@@ -1,17 +1,35 @@
+server:
+  port: 8094
+
 spring:
   application:
     name: discounts-analytics-service
-  kafka:
-    bootstrap-servers: localhost:9092
-    consumer:
-      group-id: discounts-analytics-group
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-      properties:
-        spring.json.trusted.packages: "*"
+  datasource:
+    url: jdbc:postgresql://localhost:5438/discountsanalyticsdb
+    username: uberlite
+    password: changeme
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  cloud:
+    openfeign:
+      client:
+        config:
+          default:
+            connectTimeout: 2000
+            # Generous compared to the rider-facing services: this is a background batch pulling an
+            # aggregate over every rider, and nobody is waiting on the response.
+            readTimeout: 30000
+            loggerLevel: basic
 
-server:
-  port: 8094
+discounts-analytics:
+  # "<3 completed trips", matching the first-3-rides promotion Discounts & Promotions seeds.
+  trip-threshold: 3
+  # 02:00 daily — after the evening peak has settled, before the morning one starts.
+  cron: "0 0 2 * * *"
 
 eureka:
   client:
@@ -29,3 +47,18 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+  datasource:
+    url: jdbc:postgresql://discounts-analytics-postgres:5432/discountsanalyticsdb
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://discovery-server:8761/eureka/
+  instance:
+    prefer-ip-address: true
