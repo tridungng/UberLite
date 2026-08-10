@@ -65,11 +65,46 @@ mvn -pl price-estimation-service spring-boot:run
 
 ### Background Analytics Services (paper Sec. 5)
 
-| Service | Purpose | State |
-|---------|---------|-------|
-| **Forecasting Service** | Demand forecast per H3 cell/hour | ✅ Implemented |
-| **Matching Analytics Service** | Kafka consumer, log match events | ✅ Implemented |
-| **Discounts Analytics Service** | Kafka consumer, nightly promo batch | ✅ Implemented |
+All three are rule-based/logging-only in the MVP — no ML — and each owns its own Postgres instance
+("database per service", ARCHITECTURE.md §5).
+
+| Service | Port | Purpose | State |
+|---------|------|---------|-------|
+| **Forecasting Service** | 8092 | Counts `REQUESTED` demand per H3 cell/hour, serves a rolling average | ✅ Implemented |
+| **Matching Analytics Service** | 8093 | Kafka consumer, persists every propose/accept/decline to `match_log` | ✅ Implemented |
+| **Discounts Analytics Service** | 8094 | Nightly `@Scheduled` batch, flags low-ride riders into `promo_candidates` | ✅ Implemented |
+
+**Forecasting Service** — consumes `trip-events`, increments
+`demand_counts(h3_cell, hour_of_day, day_bucket, count)` on each `REQUESTED` event, and serves:
+
+```
+GET /forecast/{h3Cell}?hourOfDay=18   →  {"h3Cell":"...","hourOfDay":18,"predictedDemand":4.5}
+```
+
+The average is taken over the last 7 *complete* day buckets for that cell and hour — a bucket only
+counts once its hour has fully elapsed, so asking at 14:00 about the 20:00 rush is not dragged down
+by an evening that has not happened yet. Days with no rows count as zero demand, not as missing
+data. Tunable via `forecasting.window-days` and `forecasting.zone`.
+
+This endpoint is the documented plug-in point for a future *surge-pricing-service v2*: Surge Pricing
+is currently reactive (`pending_requests / active_drivers` from live counters only) and would use the
+forecast to pre-position its clamp bounds. **Not wired up in this issue** — see `DemandForecaster`.
+
+**Matching Analytics Service** — filters `trip-events` for `DRIVER_PROPOSED`, `DRIVER_ACCEPTED` and
+`DRIVER_DECLINED`, writing one `match_log` row each. This is the only place a trip's *full* matching
+history survives: Trip Service overwrites `driver_id` on every retry, so its own row cannot show that
+two drivers declined before a third accepted. Debug read: `GET /match-log/{tripId}`.
+
+**Discounts Analytics Service** — nightly at 02:00 it calls Trip Service's
+`GET /trips/rider-trip-counts` and flags riders with fewer than `discounts-analytics.trip-threshold`
+(default 3) completed trips into `promo_candidates`. Riders who cross the threshold are swept out on
+the next run, so the promotion actually ends. The table is **populated only** — Discounts &
+Promotions' rule evaluator still prices from the live `riderTripCount` and reading this table is a
+follow-up issue. Debug: `GET /promo-candidates`, `POST /promo-candidates/refresh` (runs the batch now
+instead of waiting for the cron; it is idempotent).
+
+Unlike the other two, this service has no Kafka consumer — it is a batch that pulls an aggregate, so
+an idle consumer group would be a dependency with nothing to do.
 
 ### Infrastructure Services
 
