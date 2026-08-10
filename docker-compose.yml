@@ -198,24 +198,6 @@ services:
       - driver-discovery-service
       - route-service
 
-  tax-tolls-service:
-    build:
-      context: .
-      dockerfile: tax-tolls-service/Dockerfile
-    environment:
-      - SPRING_PROFILES_ACTIVE=docker
-    ports:
-      - "8090:8090"
-
-  discounts-promotions-service:
-    build:
-      context: .
-      dockerfile: discounts-promotions-service/Dockerfile
-    environment:
-      - SPRING_PROFILES_ACTIVE=docker
-    ports:
-      - "8091:8091"
-
   forecasting-service:
     build:
       context: .
