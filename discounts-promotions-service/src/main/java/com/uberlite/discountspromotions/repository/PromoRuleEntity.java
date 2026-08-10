@@ -4,6 +4,9 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import java.math.BigDecimal;
 
 @Entity
@@ -19,7 +22,8 @@ public class PromoRuleEntity {
     @Column(name = "discount_pct")
     private BigDecimal discountPct;
 
-    @Column(name = "condition_json")
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "condition_json", columnDefinition = "jsonb")
     private String conditionJson;
 
     public PromoRuleEntity() {}

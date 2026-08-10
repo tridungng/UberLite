@@ -17,13 +17,8 @@ public class DiscountsController {
     }
 
     @PostMapping("/discounts/evaluate")
-    public ResponseEntity<Map<String, Object>> evaluate(@RequestBody Map<String, Object> req) {
-        String riderId = (String) req.get("riderId");
-        int riderTripCount = 0;
-        if (req.get("riderTripCount") instanceof Number) {
-            riderTripCount = ((Number) req.get("riderTripCount")).intValue();
-        }
-        double discountPct = evaluator.evaluate(riderId, riderTripCount);
+    public ResponseEntity<Map<String, Object>> evaluate(@RequestBody DiscountEvaluationRequest req) {
+        double discountPct = evaluator.evaluate(req.riderId, req.riderTripCount);
         return ResponseEntity.ok(Map.of("discountPct", discountPct));
     }
 }
