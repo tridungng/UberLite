@@ -191,6 +191,44 @@ class TripOrchestrationIntegrationTest {
     }
 
     @Test
+    @DisplayName("GET /trips/rider-trip-counts counts completed trips only, for analytics consumers")
+    void riderTripCountsExposesTheAggregateDiscountsAnalyticsNeeds() throws Exception {
+        // Relative rather than absolute: this class shares one in-memory database across tests, so
+        // asserting a fixed total would couple this test to the execution order of the others.
+        long before = reportedCompletedTrips("rider-1");
+
+        UUID inFlight = createTripExpectingPriced();
+        transition(inFlight, TripState.ACCEPTED_BY_RIDER);
+
+        // A trip that has not completed is not a completed trip.
+        assertThat(reportedCompletedTrips("rider-1")).isEqualTo(before);
+
+        transition(inFlight, TripState.DRIVER_ACCEPTED);
+        transition(inFlight, TripState.EN_ROUTE_TO_PICKUP);
+        transition(inFlight, TripState.RIDER_PICKED_UP);
+        transition(inFlight, TripState.COMPLETED);
+
+        assertThat(reportedCompletedTrips("rider-1")).isEqualTo(before + 1);
+    }
+
+    /**
+     * Reads the aggregate through the HTTP endpoint, not the repository, so the literal path also
+     * gets exercised — it has to win the route match against {@code GET /trips/{id}}, which would
+     * otherwise try to parse "rider-trip-counts" as a UUID.
+     */
+    private long reportedCompletedTrips(String riderId) throws Exception {
+        String json = mockMvc.perform(get("/trips/rider-trip-counts"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        return MAPPER.readTree(json).valueStream()
+                .filter(node -> riderId.equals(node.path("riderId").asText()))
+                .mapToLong(node -> node.path("completedTrips").asLong())
+                .findFirst()
+                .orElse(0L);
+    }
+
+    @Test
     @DisplayName("the PRICED event carries the quote and breakdown, not just the amount")
     void pricedEventCarriesTheQuote() throws Exception {
         UUID tripId = createTripExpectingPriced();

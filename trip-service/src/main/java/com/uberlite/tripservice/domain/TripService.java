@@ -3,6 +3,7 @@ package com.uberlite.tripservice.domain;
 import com.uberlite.common.dto.DriverCandidateDto;
 import com.uberlite.common.dto.LocationDto;
 import com.uberlite.common.dto.PriceQuoteDto;
+import com.uberlite.common.dto.RiderTripCountDto;
 import com.uberlite.common.events.Topics;
 import com.uberlite.common.events.TripEvent;
 import com.uberlite.common.events.TripEventPayloadKeys;
@@ -94,6 +95,24 @@ public class TripService {
     public int countCompletedTrips(String riderId) {
         return (int) tripRepository.countByRiderIdAndStateIn(
                 riderId, List.of(TripState.COMPLETED, TripState.PAID));
+    }
+
+    /**
+     * The same figure for every rider that has at least one completed trip. Discounts Analytics'
+     * nightly batch (ARCHITECTURE.md Sec. 2) needs the whole population, and one HTTP call per
+     * rider would make the batch's cost linear in a number it does not know up front.
+     *
+     * <p>Riders with zero completed trips are absent by construction — a {@code GROUP BY} over
+     * completed trips cannot invent a row for someone who has none. Callers that treat "below the
+     * promo threshold" as including brand-new riders must handle that themselves; Trip Service does
+     * not know who has merely registered.
+     */
+    @Transactional(readOnly = true)
+    public List<RiderTripCountDto> countCompletedTripsPerRider() {
+        return tripRepository.countTripsPerRider(List.of(TripState.COMPLETED, TripState.PAID))
+                .stream()
+                .map(row -> new RiderTripCountDto(row.getRiderId(), row.getTripCount()))
+                .toList();
     }
 
     /**

@@ -1,5 +1,6 @@
 package com.uberlite.tripservice.api;
 
+import com.uberlite.common.dto.RiderTripCountDto;
 import com.uberlite.tripservice.api.dto.CreateTripRequest;
 import com.uberlite.tripservice.api.dto.TransitionRequest;
 import com.uberlite.tripservice.api.dto.TripResponse;
@@ -10,6 +11,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -69,6 +71,19 @@ public class TripController {
     @GetMapping("/{id}")
     public TripResponse get(@PathVariable UUID id) {
         return tripService.getTrip(id);
+    }
+
+    /**
+     * Completed-trip count per rider, for background/analytics consumers.
+     *
+     * <p>Exists because Discounts Analytics' nightly batch (ARCHITECTURE.md Sec. 2) must not reach
+     * into Trip Service's database — "database per service" (Sec. 5) means the aggregate is
+     * published as a contract instead. Placed on a distinct path so it can be rate-limited or
+     * moved to a read replica later without touching the rider-facing routes.
+     */
+    @GetMapping("/rider-trip-counts")
+    public List<RiderTripCountDto> riderTripCounts() {
+        return tripService.countCompletedTripsPerRider();
     }
 
     /**
