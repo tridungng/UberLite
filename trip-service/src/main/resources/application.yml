@@ -20,41 +20,63 @@ spring:
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+  cloud:
+    openfeign:
+      client:
+        config:
+          # Creating a trip and matching a driver are both rider-facing and synchronous: fail fast
+          # rather than hold the request thread while a sick dependency times out at the socket.
+          default:
+            connectTimeout: 2000
+            readTimeout: 3000
+            loggerLevel: basic
+          # Matching fans out to Driver Discovery plus one Route call per candidate, so it is
+          # legitimately slower than the other two.
+          matching-service:
+            connectTimeout: 2000
+            readTimeout: 5000
+
+trip:
+  orchestration:
+    # Matching is stateless and has no exclusion list; this bounds how many times we re-ask before
+    # concluding that every available driver has already declined (ARCHITECTURE.md Sec. 4).
+    max-proposals-per-attempt: 3
 
 server:
   port: 8083
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://localhost:8761/eureka/
+  instance:
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
 
 management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized
 
 ---
 spring:
   config:
     activate:
       on-profile: docker
-  application:
-    name: trip-service
   datasource:
     url: jdbc:postgresql://trip-service-postgres:5432/tripdb
     username: uberlite
     password: changeme
-  flyway:
-    enabled: true
-    default-schema: trip
-    schemas: trip
-  jpa:
-    hibernate:
-      ddl-auto: validate
-    properties:
-      hibernate:
-        default_schema: trip
   kafka:
     bootstrap-servers: kafka:9092
-    producer:
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
-server:
-  port: 8083
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://discovery-server:8761/eureka/
+  instance:
+    prefer-ip-address: true
