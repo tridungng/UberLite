@@ -8,7 +8,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 @SpringBootApplication
 @EnableConfigurationProperties(AggregateHealthProperties.class)
 public class ApiGatewayApplication {
-    static void main(String[] args) {
+    public static void main(String[] args) {
         SpringApplication.run(ApiGatewayApplication.class, args);
     }
 }
