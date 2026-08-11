@@ -60,34 +60,26 @@ services:
       retries: 20
       start_period: 20s
 
-  zookeeper:
-    image: confluentinc/cp-zookeeper:8.2.2
-    restart: unless-stopped
-    networks: [uberlite]
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-    healthcheck:
-      test: ["CMD-SHELL", "echo ruok | nc -w 2 localhost 2181 | grep -q imok"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-      start_period: 15s
-
+  # No ZooKeeper service: Confluent Platform 8.x is built on Apache Kafka 4.x, which removed
+  # ZooKeeper entirely, so confluentinc/cp-zookeeper has no 8.x tag to pull. The broker below runs
+  # as a single-node KRaft cluster acting as its own controller quorum.
   kafka:
     image: confluentinc/cp-kafka:8.2.2
     restart: unless-stopped
     networks: [uberlite]
-    depends_on:
-      zookeeper:
-        condition: service_healthy
     environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
-      # Two listeners: containers reach the broker as kafka:9092, the host as localhost:29092. With
-      # a single listener one of the two always gets an unusable advertised address back.
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
-      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:29092
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:9093'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      # Fixed rather than generated: the id is baked into the formatted log directory, and a fresh
+      # one on every `up` would make the broker refuse to start against a surviving volume.
+      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+      # Two client listeners: containers reach the broker as kafka:9092, the host as
+      # localhost:29092. With a single listener one of the two always gets an unusable advertised
+      # address back. CONTROLLER is the KRaft quorum plane - internal only, never advertised.
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093
       KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:29092
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1

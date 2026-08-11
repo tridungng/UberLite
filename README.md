@@ -338,7 +338,7 @@ Run with `docker compose up`, or set `SPRING_PROFILES_ACTIVE=docker` manually.
 
 ### Integration tests (requires Docker running)
 ```bash
-docker compose up -d kafka zookeeper redis discovery-server trip-service-postgres
+docker compose up -d kafka redis discovery-server trip-service-postgres
 ./mvnw -pl <service> -Dgroups=integration test
 ```
 
