@@ -1,0 +1,13 @@
+# Test profile: the gateway's route table and aggregate-health wiring are unit-testable without a
+# registry, and a live Eureka lookup in a unit test would mean 30s of retries against nothing.
+eureka:
+  client:
+    enabled: false
+    register-with-eureka: false
+    fetch-registry: false
+
+# No collector in tests; without this the reporter logs a connection failure on every span.
+management:
+  tracing:
+    enabled: false
+

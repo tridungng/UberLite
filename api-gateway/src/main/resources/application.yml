@@ -3,6 +3,77 @@ spring:
     import: "optional:classpath:uberlite-defaults.yml"
   application:
     name: api-gateway
+  cloud:
+    gateway:
+      server:
+        webflux:
+          discovery:
+            locator:
+              # Off on purpose. The locator would expose every registered service under
+              # /<SERVICE-ID>/**, including internal-only ones, and those paths would not match the
+              # contracts in ARCHITECTURE.md. Routes are declared explicitly below so the public
+              # surface is reviewable in one place.
+              enabled: false
+          # lb:// resolves through Eureka, so an instance can move host/port without a gateway
+          # restart. No StripPrefix: the gateway's public contract is deliberately identical to
+          # each service's own path, so curl works the same with or without the gateway.
+          routes:
+            - id: trip-service
+              uri: lb://trip-service
+              predicates:
+                - Path=/trips/**
+            - id: price-estimation-service
+              uri: lb://price-estimation-service
+              predicates:
+                - Path=/price-estimates/**
+            - id: matching-service
+              uri: lb://matching-service
+              predicates:
+                - Path=/matches/**
+            - id: driver-discovery-service
+              uri: lb://driver-discovery-service
+              predicates:
+                - Path=/drivers/**
+            - id: route-service
+              uri: lb://route-service
+              predicates:
+                - Path=/route/**
+            - id: time-estimation-service
+              uri: lb://time-estimation-service
+              predicates:
+                - Path=/time/**
+            - id: surge-pricing-service
+              uri: lb://surge-pricing-service
+              predicates:
+                - Path=/surge/**
+            - id: tax-tolls-service
+              uri: lb://tax-tolls-service
+              predicates:
+                - Path=/tax/**,/tolls/**
+            - id: discounts-promotions-service
+              uri: lb://discounts-promotions-service
+              predicates:
+                - Path=/discounts/**
+            - id: forecasting-service
+              uri: lb://forecasting-service
+              predicates:
+                - Path=/forecast/**
+            - id: matching-analytics-service
+              uri: lb://matching-analytics-service
+              predicates:
+                - Path=/match-log/**
+            - id: discounts-analytics-service
+              uri: lb://discounts-analytics-service
+              predicates:
+                - Path=/promo-candidates/**
 
 server:
   port: 8080
+
+uberlite:
+  health:
+    aggregate:
+      # Per-instance budget for the fan-out behind GET /health/aggregate. Short by design: the
+      # aggregate view is a dashboard, so a hung service should show as DOWN quickly rather than
+      # stall the whole report.
+      timeout: 2s
