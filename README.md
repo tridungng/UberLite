@@ -8,7 +8,8 @@ Minimal scaffold for the UberLite MVP implementing the *Designing UberLite: a Ri
 
 See `ARCHITECTURE.md` for the complete service decomposition, data models, and API contracts. UberLite is a **microservices** project with:
 
-- **15 services** (8 core marketplace, 4 background analytics, 3 infrastructure)
+- **15 Maven modules** — 9 core marketplace services, 3 background analytics services, and 3
+  infrastructure modules (`discovery-server`, `api-gateway`, `common`)
 - **Postgres** for trip state machine and static reference data
 - **Redis** for driver locations and surge multipliers (real-time, low latency)
 - **Kafka** for domain event triggers (trip state transitions propagate to analytics services)
@@ -29,8 +30,8 @@ From a clean clone to a completed trip in three commands.
 | Docker | with Compose v2 | `docker compose version` — v2 syntax, not the old `docker-compose` binary |
 | `curl`, `jq` | any | only needed by `scripts/demo.sh` (`brew install jq`) |
 
-You need roughly **8 GB of RAM free for Docker**. The stack is 24 containers: 14 JVMs, six
-Postgres instances, Kafka + ZooKeeper, Redis and Zipkin.
+You need roughly **8 GB of RAM free for Docker**. The stack is 23 containers: 14 JVMs, six
+Postgres instances, Kafka (single-node KRaft — no ZooKeeper), Redis and Zipkin.
 
 ### 1. Clone and build
 
@@ -182,7 +183,7 @@ an idle consumer group would be a dependency with nothing to do.
 | **Discovery Server (Eureka)** | 8761 | Service registry |
 | **API Gateway** | 8080 | Single entry point + `/health/aggregate` |
 | **Zipkin** | 9411 | Trace collector and UI |
-| **Kafka** | 9092 (in-network) / 29092 (host) | `trip-events` topic |
+| **Kafka** | 9092 (in-network) / 29092 (host) | `trip-events` topic; single-node KRaft, no ZooKeeper |
 | **Redis** | 6379 | Driver locations, surge counters |
 | **Postgres** | 5433–5438 | One instance per stateful service |
 | **Common** | — | Shared DTOs, H3 utilities, Kafka event schemas, `uberlite-defaults.yml` |
@@ -240,31 +241,54 @@ Each transition publishes a Kafka event on topic `trip-events` for async subscri
 
 ## Package Structure
 
-Each service follows the same layout:
+Each service follows the same layout. A package only appears when the service needs it — no empty
+placeholders — but when it appears, it has this name and no other:
 
 ```
 <service>/
-  src/main/java/com/uberlite/<servicename>/
+  src/main/java/com/uberlite/<pkg>/
     ├── api/                          # REST controllers
-    │   └── *Controller.java
+    │   ├── *Controller.java
+    │   ├── ApiExceptionHandler.java  # @RestControllerAdvice, where the service has one
+    │   └── dto/                      # request/response shapes used by this service only
     ├── client/                       # OpenFeign clients (for calling other services)
     │   └── *Client.java
-    ├── domain/                       # Domain logic / business rules
-    │   ├── *Service.java
-    │   └── *Entity.java
-    ├── repository/                   # Data access (Spring Data JPA or custom)
-    │   └── *Repository.java
-    ├── kafka/                        # Kafka consumers (if applicable)
-    │   └── *Listener.java
-    └── <ServiceName>Application.java # Spring Boot entry point
+    ├── config/                       # @ConfigurationProperties + infrastructure @Configuration
+    │   └── *Properties.java, *Config.java
+    ├── domain/                       # domain logic, business rules, domain exceptions
+    │   └── *Service.java
+    ├── messaging/                    # Kafka consumers/producers (if applicable)
+    │   └── *Consumer.java
+    ├── repository/                   # Spring Data repositories
+    │   ├── *Repository.java
+    │   └── entity/                   # @Entity classes
+    │       └── *Entity.java
+    └── <Name>ServiceApplication.java # Spring Boot entry point
   src/main/resources/
-    └── application.yml               # Service config
-  src/test/
-    ├── java/                         # Unit & integration tests
-    └── resources/
-  Dockerfile                          # Multi-stage Maven build
-  pom.xml                             # Service-specific dependencies
+    ├── application.yml               # service config
+    └── db/migration/                 # Flyway scripts, for modules owning a Postgres schema
+  src/test/java/com/uberlite/<pkg>/
+    ├── <Name>IntegrationTest.java    # whole-app tests sit in the root package
+    └── <layer>/                      # unit tests mirror the package of the class under test
+  Dockerfile                          # multi-stage Maven build
+  README.md                           # what this module does and how to run it alone
+  pom.xml                             # service-specific dependencies
 ```
+
+Two rules are load-bearing rather than cosmetic:
+
+- **`domain/` never `service/`.** The layer is the domain layer; the classes inside it may still be
+  called `*Service`.
+- **Cross-service DTOs live in `common`, and only there.** A type produced by one service and
+  consumed by another (`RouteEstimateDto`, `TimeEstimateDto`, `PriceQuoteDto`, …) is the *same
+  class* on both sides, so the producer cannot change a field name without breaking the consumer's
+  compile. `api/dto/` is only for shapes nobody else consumes. A service that hand-rolls a `Map` as
+  its response body defeats this entirely — the caller still binds to the shared DTO and simply gets
+  nulls at runtime.
+
+`@EnableDiscoveryClient` is deliberately absent everywhere: with
+`spring-cloud-starter-netflix-eureka-client` on the classpath registration is automatic, so the
+annotation was noise that only some modules carried.
 
 ## Configuration
 
@@ -521,10 +545,14 @@ runtime. No Java test can see across all four files, so the consistency check ru
 ## Contributing
 
 - Always update tests when modifying domain logic
-- Follow the package structure (api, domain, repository, client)
-- Use DTOs from `common` for cross-service communication
-- Publish domain events to Kafka for async subscribers
-- Ensure `mvn clean install` passes before pushing
+- Follow the package structure above (`api`, `api/dto`, `client`, `config`, `domain`, `messaging`,
+  `repository`, `repository/entity`) — see [Package Structure](#package-structure)
+- Use DTOs from `common` for cross-service communication, and return them from the producing
+  controller too, not just from the consuming Feign client
+- Publish domain events to Kafka for async subscribers; topic names come from `common`
+- Every module carries its own `README.md`
+- Ensure `mvn clean install` and `python3 scripts/check-config-consistency.py` both pass before
+  pushing
 
 ## References
 

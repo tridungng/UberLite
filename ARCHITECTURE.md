@@ -28,29 +28,34 @@ infrastructure simplified to run on a laptop via Docker Compose.
 
 ## 2. Service inventory
 
+Twelve of the paper's services map to a deployable module. Two rows below deliberately do **not**:
+Map Indexing is a pure function and ships as a library in `common`, and Pricing (strategy) has no
+independent behaviour left once Forecasting and Surge Pricing exist. Both are called out in place
+rather than quietly dropped — see the "MVP simplification" column.
+
 ### Core marketplace services (paper Sec. 4)
 
-| Service | Paper role | MVP simplification |
-|---|---|---|
-| Map Indexing | H3 hexagonal geo-index | **Not simplified** — use Uber's real `h3-java` library as a shared dependency, not a separate network service (it's a pure function, no state) |
-| Driver Discovery (DRS) | Realtime driver locations, neighborhood queries | Redis geo-index keyed by H3 cell; drivers POST location every N seconds |
-| Route Service (RS) | k candidate routes A→B | Haversine straight-line distance × a fixed detour factor, returns 1 synthetic route (no real road network) |
-| Time Estimation (TES) | Traffic-aware ETA | Static per-H3-cell "heat" multiplier table (seed data), applied to Route Service's distance/speed |
-| Surge Pricing (SPS) | Realtime surge multiplier per cell | `multiplier = clamp(pending_requests / active_drivers, 1.0, 3.0)` per H3 cell, recomputed on each Driver Discovery / Trip event |
-| Discounts & Promotions (DPS) | Rider/driver incentives | Static rule table (e.g. "first 3 rides: 20% off") stored in Postgres, no personalization model |
-| Tax & Tolls (TTS) | Region tax + toll lookup | Static config table per region/route, Postgres |
-| Price Estimation (PES) | Aggregates all of the above into a price | Implements the paper's formula exactly (Sec. 2), calling the other services over REST |
-| Matching Service (MS) | Optimal driver↔rider batch matching | Greedy nearest-available-driver matching per request, not batch-optimal assignment |
-| Trip Service | State machine + source of truth | Postgres-backed state machine, publishes Kafka events per transition (this *is* the paper's "Trip Store" + implicit orchestrator) |
+| Service | Module | Paper role | MVP simplification |
+|---|---|---|---|
+| Map Indexing | *(none — `common`)* | H3 hexagonal geo-index | **Not simplified** — Uber's real `h3-java` library as a shared dependency, not a separate network service (it's a pure function, no state) |
+| Driver Discovery (DRS) | `driver-discovery-service` | Realtime driver locations, neighborhood queries | Redis geo-index keyed by H3 cell; drivers POST location every N seconds |
+| Route Service (RS) | `route-service` | k candidate routes A→B | Haversine straight-line distance × a fixed detour factor, returns 1 synthetic route (no real road network) |
+| Time Estimation (TES) | `time-estimation-service` | Traffic-aware ETA | Static per-cell "heat" multiplier table (seed data), applied to a configured base duration |
+| Surge Pricing (SPS) | `surge-pricing-service` | Realtime surge multiplier per cell | `multiplier = clamp(pending_requests / active_drivers, 1.0, 3.0)` per H3 cell, recomputed on each Driver Discovery / Trip event |
+| Discounts & Promotions (DPS) | `discounts-promotions-service` | Rider/driver incentives | Static rule table (e.g. "first 3 rides: 20% off") stored in Postgres, no personalization model |
+| Tax & Tolls (TTS) | `tax-tolls-service` | Region tax + toll lookup | Static config table per region/route, Postgres |
+| Price Estimation (PES) | `price-estimation-service` | Aggregates all of the above into a price | Implements the paper's formula exactly (Sec. 2), calling the other services over REST |
+| Matching Service (MS) | `matching-service` | Optimal driver↔rider batch matching | Greedy nearest-available-driver matching per request, not batch-optimal assignment |
+| Trip Service | `trip-service` | State machine + source of truth | Postgres-backed state machine, publishes Kafka events per transition (this *is* the paper's "Trip Store" + implicit orchestrator) |
 
 ### Background services (paper Sec. 5)
 
-| Service | Paper role | MVP simplification |
-|---|---|---|
-| Forecasting | ML demand/supply forecast | Rolling average of last-N-days demand per H3 cell/hour-of-day, no weather/events input |
-| Pricing (strategy) | Turns forecast into surge policy | Directly feeds the SPS clamp bounds from the forecast rolling average; no separate optimization |
-| Matching Analytics | Logs matches for model improvement | Kafka consumer that persists every match input/output to Postgres — logging only, no training loop |
-| Discounts Analytics | Personalized promotion strategy | Nightly batch job (Spring `@Scheduled`) that flags riders below a ride-count threshold for a promo, writes rows DPS reads |
+| Service | Module | Paper role | MVP simplification |
+|---|---|---|---|
+| Forecasting | `forecasting-service` | ML demand/supply forecast | Rolling average of last-N-days demand per H3 cell/hour-of-day, no weather/events input |
+| Pricing (strategy) | *(none — folded into SPS)* | Turns forecast into surge policy | No separate module: the strategy is the clamp inside Surge Pricing, and Forecasting's `GET /forecast/{cell}` is the documented seam where a real policy would read demand. A module that only forwarded one number would be decomposition theatre |
+| Matching Analytics | `matching-analytics-service` | Logs matches for model improvement | Kafka consumer that persists every match input/output to Postgres — logging only, no training loop |
+| Discounts Analytics | `discounts-analytics-service` | Personalized promotion strategy | Nightly batch job (Spring `@Scheduled`) that flags riders below a ride-count threshold for a promo, writes rows DPS reads |
 
 ## 3. Trip state machine (paper Sec. 3, Fig. 1)
 
@@ -147,10 +152,10 @@ is ultimately responsible for never proposing a decliner twice.
 | Service discovery | Spring Cloud Netflix Eureka | Standard Spring microservices pattern, minimal config |
 | API gateway | Spring Cloud Gateway | Single entry point for rider/driver clients |
 | Sync inter-service calls | REST via OpenFeign | Simplest to scaffold, easy for Copilot to generate consistently |
-| Async / triggers | Kafka (`spring-kafka`) | Matches paper's explicit recommendation for the trigger framework |
+| Async / triggers | Kafka (`spring-kafka`), single-node KRaft | Matches paper's explicit recommendation for the trigger framework. Confluent Platform 8.x is built on Kafka 4.x, which removed ZooKeeper, so the broker is its own controller quorum |
 | Trip store | Postgres (one schema per service — no shared DB) | Durable, queryable, "database per service" |
 | Geospatial / hot data | Redis | Driver locations, surge multipliers — matches paper's "Realtime, Severe staleness" services |
-| Local orchestration | Docker Compose | One `docker compose up` boots Eureka, Gateway, Zipkin, Kafka+Zookeeper, Postgres (per service), Redis and all app services. Ordering is gated on container health checks, not just start order |
+| Local orchestration | Docker Compose | One `docker compose up` boots Eureka, Gateway, Zipkin, Kafka (KRaft, no ZooKeeper), Postgres (per stateful service) and Redis alongside all app services. Ordering is gated on container health checks, not just start order |
 | Build | Maven multi-module (decided in issue 00; Gradle was the alternative) | Shared `common` module for DTOs + H3 helpers, plus a test-jar with shared test infrastructure |
 | Observability | Spring Boot Actuator + Micrometer + Zipkin (Brave bridge) | Delivered in issue 11, no longer a stretch goal. Every service exposes `/actuator/health`, `/info`, `/metrics` and `/prometheus`; trace context propagates over HTTP (via `feign-micrometer`) and Kafka, so one rider request is one Zipkin trace. Shared config lives once in `common/src/main/resources/uberlite-defaults.yml` |
 | Aggregate health | `GET /health/aggregate` on the API gateway | Fans out to every Eureka-registered instance and returns a single document; `200` only when all are `UP`. Deliberately separate from the gateway's own `/actuator/health` |
@@ -159,9 +164,12 @@ is ultimately responsible for never proposing a decliner twice.
 
 ```
 uberlite/
-  common/                      # shared DTOs, H3 utility wrapper, Kafka event schemas
+  pom.xml                      # reactor; every module is listed here
+  mvnw, mvnw.cmd               # pinned Maven wrapper
+  common/                      # shared DTOs, H3 utility wrapper, Kafka event schemas,
+                               #   uberlite-defaults.yml, and a test-jar with StubServer
   discovery-server/            # Eureka
-  api-gateway/                 # Spring Cloud Gateway
+  api-gateway/                 # Spring Cloud Gateway + /health/aggregate
   trip-service/
   driver-discovery-service/
   route-service/
@@ -174,10 +182,47 @@ uberlite/
   forecasting-service/
   matching-analytics-service/
   discounts-analytics-service/
+  scripts/
+    demo.sh                    # end-to-end happy path against a running stack
+    check-config-consistency.py# ports/service ids across yml, Dockerfile, compose, gateway
   docker-compose.yml
   .github/copilot-instructions.md
   ARCHITECTURE.md
+  README.md
 ```
+
+### Layout inside a service module
+
+Every service module has the same shape. A package is only present when the service needs it —
+there are no empty placeholder packages — but when it is present it has this name and no other:
+
+```
+<service>/
+  src/main/java/com/uberlite/<pkg>/
+    api/            REST controllers and @RestControllerAdvice
+    api/dto/          request/response records used by this service only
+    client/         @FeignClient interfaces for calling other services
+    config/         @ConfigurationProperties and infrastructure @Configuration
+    domain/         business rules, domain services, domain exceptions
+    messaging/      Kafka consumers/producers
+    repository/     Spring Data repositories
+    repository/entity/  @Entity classes
+    <Name>ServiceApplication.java
+  src/main/resources/
+    application.yml
+    db/migration/   Flyway scripts, for the modules that own a Postgres schema
+  src/test/java/com/uberlite/<pkg>/
+    <Name>IntegrationTest.java   whole-app tests live in the root package
+    <layer>/…                    unit tests mirror the package under test
+  Dockerfile
+  README.md
+  pom.xml
+```
+
+Cross-service DTOs live in `common` and **only** there. A response type produced by one service and
+consumed by another (`RouteEstimateDto`, `TimeEstimateDto`, `PriceQuoteDto`, …) must be the same
+class on both sides, so producer and consumer cannot drift apart without the compiler noticing.
+`api/dto/` is for shapes nobody else consumes.
 
 ## 7. Data model highlights
 
