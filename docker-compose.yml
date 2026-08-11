@@ -1,299 +1,438 @@
-version: '3.8'
+# UberLite - full local stack (issue 11).
+#
+# `docker compose up --build` brings up infrastructure, then Eureka, then the application services.
+# Ordering is enforced with `condition: service_healthy` rather than plain `depends_on`, which only
+# waits for a container to *start* - that is why the stack used to come up with services thrashing
+# against a Postgres that had not finished initialising.
+#
+# The `version:` key is intentionally absent: it is obsolete in Compose v2 and only emits a warning.
+
+# -------------------------------------------------------------------------------------------------
+# Shared fragments. Every application service inherits the same env and restart policy, so adding a
+# service is six lines rather than twenty.
+# -------------------------------------------------------------------------------------------------
+x-service-env: &service-env
+  SPRING_PROFILES_ACTIVE: docker
+  EUREKA_URL: http://discovery-server:8761/eureka/
+  ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+  # Containers get a fraction of the host's RAM; without a cap each JVM sizes its heap off the
+  # host's total and 14 services fight over it.
+  JAVA_OPTS: "-XX:MaxRAMPercentage=70"
+
+x-app-service: &app-service
+  restart: unless-stopped
+  environment: *service-env
+  networks: [uberlite]
+
+x-postgres: &postgres
+  image: postgres:15
+  restart: unless-stopped
+  networks: [uberlite]
+  environment: &postgres-env
+    POSTGRES_USER: uberlite
+    POSTGRES_PASSWORD: changeme
+
+# Minimum any application service must wait for: the registry it advertises itself in, and the
+# trace collector it reports to.
+x-platform-ready: &platform-ready
+  discovery-server:
+    condition: service_healthy
+  zipkin:
+    condition: service_healthy
 
 services:
+  # -----------------------------------------------------------------------------------------------
+  # Infrastructure
+  # -----------------------------------------------------------------------------------------------
+  zipkin:
+    image: openzipkin/zipkin:3
+    restart: unless-stopped
+    networks: [uberlite]
+    ports:
+      - "9411:9411"
+    environment:
+      # In-memory storage: traces are for looking at during a demo, not for keeping.
+      STORAGE_TYPE: mem
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9411/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:8.2.2
+    restart: unless-stopped
+    networks: [uberlite]
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc -w 2 localhost 2181 | grep -q imok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  kafka:
+    image: confluentinc/cp-kafka:8.2.2
+    restart: unless-stopped
+    networks: [uberlite]
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      # Two listeners: containers reach the broker as kafka:9092, the host as localhost:29092. With
+      # a single listener one of the two always gets an unusable advertised address back.
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    ports:
+      - "29092:29092"
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+
+  redis:
+    image: redis:7.2
+    restart: unless-stopped
+    networks: [uberlite]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
   discovery-server:
+    <<: *app-service
     build:
       context: .
       dockerfile: discovery-server/Dockerfile
     ports:
       - "8761:8761"
-    depends_on: []
+    depends_on:
+      zipkin:
+        condition: service_healthy
 
   api-gateway:
+    <<: *app-service
     build:
       context: .
       dockerfile: api-gateway/Dockerfile
     ports:
       - "8080:8080"
-    depends_on:
-      - discovery-server
+    depends_on: *platform-ready
 
-  zookeeper:
-    image: confluentinc/cp-zookeeper:8.2.2
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-    ports:
-      - "2181:2181"
-
-  kafka:
-    image: confluentinc/cp-kafka:8.2.2
-    depends_on:
-      - zookeeper
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-    ports:
-      - "9092:9092"
-
-  redis:
-    image: redis:7.2
-    ports:
-      - "6379:6379"
-
+  # -----------------------------------------------------------------------------------------------
+  # Databases - one per service (ARCHITECTURE.md Sec. 5, "database per service")
+  # -----------------------------------------------------------------------------------------------
   trip-service-postgres:
-    image: postgres:15
+    <<: *postgres
     environment:
+      <<: *postgres-env
       POSTGRES_DB: tripdb
-      POSTGRES_USER: uberlite
-      POSTGRES_PASSWORD: changeme
-    ports:
-      - "5433:5432"
-    volumes:
-      - trip-service-db-data:/var/lib/postgresql/data
+    ports: ["5433:5432"]
+    volumes: [trip-service-db-data:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U uberlite -d tripdb"]
       interval: 5s
       timeout: 5s
-      retries: 5
-
-  trip-service:
-    build:
-      context: .
-      dockerfile: trip-service/Dockerfile
-    environment:
-      SPRING_PROFILES_ACTIVE: docker
-    ports:
-      - "8083:8083"
-    depends_on:
-      - trip-service-postgres
-      - kafka
-      # Orchestration resolves these by service id through Eureka, so discovery must be up too.
-      - discovery-server
-      - price-estimation-service
-      - matching-service
-      - surge-pricing-service
+      retries: 20
+      start_period: 10s
 
   tax-tolls-postgres:
-    image: postgres:15
+    <<: *postgres
     environment:
+      <<: *postgres-env
       POSTGRES_DB: taxtollsdb
-      POSTGRES_USER: uberlite
-      POSTGRES_PASSWORD: changeme
-    ports:
-      - "5434:5432"
-    volumes:
-      - tax-tolls-db-data:/var/lib/postgresql/data
+    ports: ["5434:5432"]
+    volumes: [tax-tolls-db-data:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U uberlite -d taxtollsdb"]
       interval: 5s
       timeout: 5s
-      retries: 5
-
-  tax-tolls-service:
-    build:
-      context: .
-      dockerfile: tax-tolls-service/Dockerfile
-    environment:
-      - SPRING_PROFILES_ACTIVE=docker
-    ports:
-      - "8090:8090"
-    depends_on:
-      - tax-tolls-postgres
+      retries: 20
+      start_period: 10s
 
   discounts-postgres:
-    image: postgres:15
+    <<: *postgres
     environment:
+      <<: *postgres-env
       POSTGRES_DB: discountsdb
-      POSTGRES_USER: uberlite
-      POSTGRES_PASSWORD: changeme
-    ports:
-      - "5435:5432"
-    volumes:
-      - discounts-db-data:/var/lib/postgresql/data
+    ports: ["5435:5432"]
+    volumes: [discounts-db-data:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U uberlite -d discountsdb"]
       interval: 5s
       timeout: 5s
-      retries: 5
-
-  discounts-promotions-service:
-    build:
-      context: .
-      dockerfile: discounts-promotions-service/Dockerfile
-    environment:
-      - SPRING_PROFILES_ACTIVE=docker
-    ports:
-      - "8091:8091"
-    depends_on:
-      - discounts-postgres
-
-  driver-discovery-service:
-    build:
-      context: .
-      dockerfile: driver-discovery-service/Dockerfile
-    environment:
-      - SPRING_PROFILES_ACTIVE=docker
-    ports:
-      - "8086:8080"
-    depends_on:
-      - redis
-
-  route-service:
-    build:
-      context: .
-      dockerfile: route-service/Dockerfile
-    environment:
-      - SPRING_PROFILES_ACTIVE=docker
-    ports:
-      - "8087:8080"
-    depends_on:
-      - redis
-
-  time-estimation-service:
-    build:
-      context: .
-      dockerfile: time-estimation-service/Dockerfile
-    environment:
-      - SPRING_PROFILES_ACTIVE=docker
-    ports:
-      - "8088:8080"
-    depends_on:
-      - redis
-
-  surge-pricing-service:
-    build:
-      context: .
-      dockerfile: surge-pricing-service/Dockerfile
-    environment:
-      - SPRING_PROFILES_ACTIVE=docker
-    ports:
-      - "8084:8084"
-    depends_on:
-      - redis
-      - driver-discovery-service
-
-  price-estimation-service:
-    build:
-      context: .
-      dockerfile: price-estimation-service/Dockerfile
-    environment:
-      - SPRING_PROFILES_ACTIVE=docker
-    ports:
-      - "8085:8085"
-    depends_on:
-      - discovery-server
-      - route-service
-      - time-estimation-service
-      - surge-pricing-service
-      - tax-tolls-service
-      - discounts-promotions-service
-
-  matching-service:
-    build:
-      context: .
-      dockerfile: matching-service/Dockerfile
-    environment:
-      - SPRING_PROFILES_ACTIVE=docker
-    ports:
-      - "8089:8089"
-    depends_on:
-      # Needs Eureka: both downstream calls are resolved by service id, not host name.
-      - discovery-server
-      - driver-discovery-service
-      - route-service
+      retries: 20
+      start_period: 10s
 
   forecasting-postgres:
-    image: postgres:15
+    <<: *postgres
     environment:
+      <<: *postgres-env
       POSTGRES_DB: forecastingdb
-      POSTGRES_USER: uberlite
-      POSTGRES_PASSWORD: changeme
-    ports:
-      - "5436:5432"
-    volumes:
-      - forecasting-db-data:/var/lib/postgresql/data
+    ports: ["5436:5432"]
+    volumes: [forecasting-db-data:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U uberlite -d forecastingdb"]
       interval: 5s
       timeout: 5s
-      retries: 5
-
-  forecasting-service:
-    build:
-      context: .
-      dockerfile: forecasting-service/Dockerfile
-    environment:
-      - SPRING_PROFILES_ACTIVE=docker
-    ports:
-      - "8092:8092"
-    depends_on:
-      - forecasting-postgres
-      - kafka
-      - discovery-server
+      retries: 20
+      start_period: 10s
 
   matching-analytics-postgres:
-    image: postgres:15
+    <<: *postgres
     environment:
+      <<: *postgres-env
       POSTGRES_DB: matchinganalyticsdb
-      POSTGRES_USER: uberlite
-      POSTGRES_PASSWORD: changeme
-    ports:
-      - "5437:5432"
-    volumes:
-      - matching-analytics-db-data:/var/lib/postgresql/data
+    ports: ["5437:5432"]
+    volumes: [matching-analytics-db-data:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U uberlite -d matchinganalyticsdb"]
       interval: 5s
       timeout: 5s
-      retries: 5
-
-  matching-analytics-service:
-    build:
-      context: .
-      dockerfile: matching-analytics-service/Dockerfile
-    environment:
-      - SPRING_PROFILES_ACTIVE=docker
-    ports:
-      - "8093:8093"
-    depends_on:
-      - matching-analytics-postgres
-      - kafka
-      - discovery-server
+      retries: 20
+      start_period: 10s
 
   discounts-analytics-postgres:
-    image: postgres:15
+    <<: *postgres
     environment:
+      <<: *postgres-env
       POSTGRES_DB: discountsanalyticsdb
-      POSTGRES_USER: uberlite
-      POSTGRES_PASSWORD: changeme
-    ports:
-      - "5438:5432"
-    volumes:
-      - discounts-analytics-db-data:/var/lib/postgresql/data
+    ports: ["5438:5432"]
+    volumes: [discounts-analytics-db-data:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U uberlite -d discountsanalyticsdb"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 20
+      start_period: 10s
+
+  # -----------------------------------------------------------------------------------------------
+  # Leaf services - no synchronous dependencies of their own, so everything else can wait on them.
+  # -----------------------------------------------------------------------------------------------
+  route-service:
+    <<: *app-service
+    build:
+      context: .
+      dockerfile: route-service/Dockerfile
+    ports:
+      - "8087:8087"
+    depends_on: *platform-ready
+
+  time-estimation-service:
+    <<: *app-service
+    build:
+      context: .
+      dockerfile: time-estimation-service/Dockerfile
+    ports:
+      - "8088:8088"
+    depends_on: *platform-ready
+
+  driver-discovery-service:
+    <<: *app-service
+    build:
+      context: .
+      dockerfile: driver-discovery-service/Dockerfile
+    ports:
+      - "8086:8086"
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+      zipkin:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  tax-tolls-service:
+    <<: *app-service
+    build:
+      context: .
+      dockerfile: tax-tolls-service/Dockerfile
+    ports:
+      - "8090:8090"
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+      zipkin:
+        condition: service_healthy
+      tax-tolls-postgres:
+        condition: service_healthy
+
+  discounts-promotions-service:
+    <<: *app-service
+    build:
+      context: .
+      dockerfile: discounts-promotions-service/Dockerfile
+    ports:
+      - "8091:8091"
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+      zipkin:
+        condition: service_healthy
+      discounts-postgres:
+        condition: service_healthy
+
+  surge-pricing-service:
+    <<: *app-service
+    build:
+      context: .
+      dockerfile: surge-pricing-service/Dockerfile
+    ports:
+      - "8084:8084"
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+      zipkin:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      driver-discovery-service:
+        condition: service_healthy
+
+  # -----------------------------------------------------------------------------------------------
+  # Composite services - each waits on the services it calls synchronously, so the first request
+  # after `up` cannot hit a half-registered dependency.
+  # -----------------------------------------------------------------------------------------------
+  price-estimation-service:
+    <<: *app-service
+    build:
+      context: .
+      dockerfile: price-estimation-service/Dockerfile
+    ports:
+      - "8085:8085"
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+      zipkin:
+        condition: service_healthy
+      route-service:
+        condition: service_healthy
+      time-estimation-service:
+        condition: service_healthy
+      surge-pricing-service:
+        condition: service_healthy
+      tax-tolls-service:
+        condition: service_healthy
+      discounts-promotions-service:
+        condition: service_healthy
+
+  matching-service:
+    <<: *app-service
+    build:
+      context: .
+      dockerfile: matching-service/Dockerfile
+    ports:
+      - "8089:8089"
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+      zipkin:
+        condition: service_healthy
+      driver-discovery-service:
+        condition: service_healthy
+      route-service:
+        condition: service_healthy
+
+  trip-service:
+    <<: *app-service
+    build:
+      context: .
+      dockerfile: trip-service/Dockerfile
+    ports:
+      - "8083:8083"
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+      zipkin:
+        condition: service_healthy
+      trip-service-postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      price-estimation-service:
+        condition: service_healthy
+      matching-service:
+        condition: service_healthy
+      surge-pricing-service:
+        condition: service_healthy
+
+  # -----------------------------------------------------------------------------------------------
+  # Background analytics (paper Sec. 5)
+  # -----------------------------------------------------------------------------------------------
+  forecasting-service:
+    <<: *app-service
+    build:
+      context: .
+      dockerfile: forecasting-service/Dockerfile
+    ports:
+      - "8092:8092"
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+      zipkin:
+        condition: service_healthy
+      forecasting-postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  matching-analytics-service:
+    <<: *app-service
+    build:
+      context: .
+      dockerfile: matching-analytics-service/Dockerfile
+    ports:
+      - "8093:8093"
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+      zipkin:
+        condition: service_healthy
+      matching-analytics-postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
 
   discounts-analytics-service:
+    <<: *app-service
     build:
       context: .
       dockerfile: discounts-analytics-service/Dockerfile
-    environment:
-      - SPRING_PROFILES_ACTIVE=docker
     ports:
       - "8094:8094"
     depends_on:
-      - discounts-analytics-postgres
-      # No Kafka: this one is a nightly batch that pulls counts from Trip Service, which it
-      # resolves by service id, so Eureka is required and the broker is not.
-      - discovery-server
-      - trip-service
+      # No Kafka: this is a nightly batch that pulls counts from Trip Service by service id, so
+      # Eureka is required and the broker is not.
+      discovery-server:
+        condition: service_healthy
+      zipkin:
+        condition: service_healthy
+      discounts-analytics-postgres:
+        condition: service_healthy
+      trip-service:
+        condition: service_healthy
+
+networks:
+  uberlite:
+    driver: bridge
 
 volumes:
   trip-service-db-data:
@@ -302,3 +441,4 @@ volumes:
   forecasting-db-data:
   matching-analytics-db-data:
   discounts-analytics-db-data:
+
