@@ -150,9 +150,10 @@ is ultimately responsible for never proposing a decliner twice.
 | Async / triggers | Kafka (`spring-kafka`) | Matches paper's explicit recommendation for the trigger framework |
 | Trip store | Postgres (one schema per service — no shared DB) | Durable, queryable, "database per service" |
 | Geospatial / hot data | Redis | Driver locations, surge multipliers — matches paper's "Realtime, Severe staleness" services |
-| Local orchestration | Docker Compose | One `docker-compose up` boots Eureka, Gateway, Kafka+Zookeeper, Postgres (per service), Redis, all app services |
+| Local orchestration | Docker Compose | One `docker compose up` boots Eureka, Gateway, Zipkin, Kafka+Zookeeper, Postgres (per service), Redis and all app services. Ordering is gated on container health checks, not just start order |
 | Build | Maven multi-module (decided in issue 00; Gradle was the alternative) | Shared `common` module for DTOs + H3 helpers, plus a test-jar with shared test infrastructure |
-| Observability (stretch) | Spring Boot Actuator + Micrometer + Zipkin | Not MVP-blocking, see issue 11 |
+| Observability | Spring Boot Actuator + Micrometer + Zipkin (Brave bridge) | Delivered in issue 11, no longer a stretch goal. Every service exposes `/actuator/health`, `/info`, `/metrics` and `/prometheus`; trace context propagates over HTTP (via `feign-micrometer`) and Kafka, so one rider request is one Zipkin trace. Shared config lives once in `common/src/main/resources/uberlite-defaults.yml` |
+| Aggregate health | `GET /health/aggregate` on the API gateway | Fans out to every Eureka-registered instance and returns a single document; `200` only when all are `UP`. Deliberately separate from the gateway's own `/actuator/health` |
 
 ## 6. Repo layout
 

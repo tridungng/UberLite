@@ -14,38 +14,107 @@ See `ARCHITECTURE.md` for the complete service decomposition, data models, and A
 - **Kafka** for domain event triggers (trip state transitions propagate to analytics services)
 - **Eureka** for service discovery
 - **Spring Cloud Gateway** as API entry point
+- **Micrometer + Zipkin** for distributed tracing across every hop
 
-## Quick Start
+## Getting Started
+
+From a clean clone to a completed trip in three commands.
 
 ### Prerequisites
-- JDK 25
-- Maven 3.9+
-- Docker & Docker Compose
 
-### 1. Build all services
+| Tool | Version | Notes |
+|------|---------|-------|
+| JDK | 25 | `java -version` must report 25; the build sets `--release 25` |
+| Maven | 3.9+ | or use the bundled `./mvnw` |
+| Docker | with Compose v2 | `docker compose version` — v2 syntax, not the old `docker-compose` binary |
+| `curl`, `jq` | any | only needed by `scripts/demo.sh` (`brew install jq`) |
+
+You need roughly **8 GB of RAM free for Docker**. The stack is 24 containers: 14 JVMs, six
+Postgres instances, Kafka + ZooKeeper, Redis and Zipkin.
+
+### 1. Clone and build
+
 ```bash
-mvn clean install
+git clone <repo-url> UberLite
+cd UberLite
+./mvnw clean install
 ```
 
-### 2. Start infrastructure and core services
+The Docker images build the code again inside the build stage, so this step is not strictly
+required to run the stack — but it fails fast, and much faster, if something is broken.
+
+### 2. Bring the whole stack up
+
 ```bash
-docker-compose up discovery-server api-gateway zookeeper kafka redis trip-service-postgres trip-service
+docker compose up --build
 ```
 
-### 3. Access the system
-- **Eureka dashboard:** http://localhost:8761 (view all registered services)
-- **API Gateway:** http://localhost:8080 (entry point for rider/driver apps)
-- **Trip Service health:** http://localhost:8083/actuator/health
+First run takes a while: every image compiles the Maven reactor from scratch. Later runs reuse the
+layer cache.
 
-### 4. Run individual services (for development)
-Each service can be run standalone for testing:
+Compose starts things in dependency order and waits on real health checks, so when the command
+settles every service is genuinely reachable rather than merely started. Watch progress with:
+
 ```bash
-# Terminal 1: Run Route Service
-mvn -pl route-service spring-boot:run
-
-# Terminal 2: Run Price Estimation Service (depends on Route Service, etc.)
-mvn -pl price-estimation-service spring-boot:run
+docker compose ps          # STATUS column should read "healthy" for every service
 ```
+
+### 3. Run the end-to-end demo
+
+In a second terminal:
+
+```bash
+./scripts/demo.sh
+```
+
+It drives the full happy path through the API gateway — puts two drivers online, creates and prices
+a trip, matches a driver, walks the trip to `PAID`, then checks that the Kafka-driven analytics
+services saw it. Every request and response is printed. **It exits non-zero on the first unexpected
+status code**, so it works as a smoke test in CI too.
+
+Useful overrides:
+
+```bash
+BASE_URL=http://localhost:8083 ./scripts/demo.sh   # bypass the gateway, hit trip-service directly
+READY_TIMEOUT_SECONDS=600 ./scripts/demo.sh        # slow machine / cold image cache
+```
+
+### 4. Where to look
+
+| What | Where | Shows |
+|------|-------|-------|
+| **Eureka dashboard** | http://localhost:8761 | every registered instance; all 13 clients should be listed |
+| **Zipkin UI** | http://localhost:9411 | distributed traces — search by service `trip-service` |
+| **Aggregate health** | http://localhost:8080/health/aggregate | one JSON document with the health of every registered service; `200` only when all are `UP` |
+| **Per-service health** | `http://localhost:<port>/actuator/health` | see the port table below |
+| **Per-service metrics** | `http://localhost:<port>/actuator/prometheus` | Micrometer metrics |
+| **API gateway** | http://localhost:8080 | single entry point; routes listed in `api-gateway/application.yml` |
+
+To see the fan-out the demo talks about, open Zipkin, pick `trip-service` and look at the trace for
+`POST /trips`. One trace spans trip-service → price-estimation-service → route-service,
+time-estimation-service, surge-pricing-service, tax-tolls-service and
+discounts-promotions-service. `scripts/demo.sh` prints a direct link to its own trace when it
+finishes.
+
+### 5. Shut down
+
+```bash
+docker compose down          # stop everything, keep the databases
+docker compose down -v       # also drop the Postgres volumes for a truly clean slate
+```
+
+### Running a single service outside Docker
+
+Every module is independently runnable. Start the infrastructure it needs, then:
+
+```bash
+docker compose up -d discovery-server zipkin redis      # whatever that service depends on
+./mvnw -pl route-service spring-boot:run
+```
+
+Without the `docker` profile a service defaults to `localhost` for Eureka, Redis, Kafka and its
+database, and the host ports published by Compose match those defaults — so a locally run service
+drops into a partially containerised stack without extra configuration.
 
 ## Service Inventory
 
@@ -108,11 +177,18 @@ an idle consumer group would be a dependency with nothing to do.
 
 ### Infrastructure Services
 
-| Service | Purpose |
-|---------|---------|
-| **Discovery Server (Eureka)** | Service registry (port 8761) |
-| **API Gateway** | Single entry point (port 8080) |
-| **Common** | Shared DTOs, H3 utilities, Kafka event schemas |
+| Service | Port | Purpose |
+|---------|------|---------|
+| **Discovery Server (Eureka)** | 8761 | Service registry |
+| **API Gateway** | 8080 | Single entry point + `/health/aggregate` |
+| **Zipkin** | 9411 | Trace collector and UI |
+| **Kafka** | 9092 (in-network) / 29092 (host) | `trip-events` topic |
+| **Redis** | 6379 | Driver locations, surge counters |
+| **Postgres** | 5433–5438 | One instance per stateful service |
+| **Common** | — | Shared DTOs, H3 utilities, Kafka event schemas, `uberlite-defaults.yml` |
+
+Kafka advertises two listeners: containers reach it as `kafka:9092`, the host as `localhost:29092`.
+A single listener cannot serve both — one side always gets an address it cannot route to.
 
 ## Data Flow Example: Request a Trip
 
@@ -131,7 +207,8 @@ an idle consumer group would be a dependency with nothing to do.
    5b. Matching → Route Service (per candidate, pickup ETA)
 6. Trip Service publishes Kafka event (state → DRIVER_PROPOSED)
 7. Matching Analytics Service (Kafka consumer) logs the match
-8. Discounts Analytics Service (Kafka consumer) checks for promo eligibility
+8. Discounts Analytics Service flags low-ride riders on its own nightly schedule (it polls
+   Trip Service's `/trips/rider-trip-counts`; it is not a Kafka consumer)
 9. Driver App → API Gateway (accept/decline driver proposal)
 10. Trip Service publishes Kafka event (state → DRIVER_ACCEPTED or DRIVER_DECLINED)
 ... (continue through RIDER_PICKED_UP, COMPLETED, PAID)
@@ -191,39 +268,49 @@ Each service follows the same layout:
 
 ## Configuration
 
-### application.yml (common to all services)
+### Shared defaults
+
+Actuator exposure, tracing, and the Eureka client/instance policy are defined **once**, in
+`common/src/main/resources/uberlite-defaults.yml`, and pulled in by every module:
+
+```yaml
+spring:
+  config:
+    import: "optional:classpath:uberlite-defaults.yml"
+```
+
+An imported document has lower precedence than the file importing it, so a service can still
+override anything locally. Don't copy management/tracing/eureka blocks back into a service — the
+whole point is that "consistent across all 14 services" stays true without anyone maintaining it.
+
+### Per-service application.yml
+
+Only what is genuinely service-specific lives in the module:
 
 ```yaml
 server:
-  port: 8XXX                          # Unique per service
+  port: 8XXX                          # unique per service, see the port table above
 
 spring:
+  config:
+    import: "optional:classpath:uberlite-defaults.yml"
   application:
-    name: <service-name>              # Eureka registration
-  jpa:
-    hibernate:
-      ddl-auto: validate              # Create tables if needed
+    name: <service-name>              # MUST match the @FeignClient(name = ...) used by callers
   datasource:
-    url: jdbc:postgresql://localhost:5432/<db>
+    url: jdbc:postgresql://localhost:5433/<db>   # localhost default keeps the module standalone
     username: uberlite
     password: changeme
   kafka:
     bootstrap-servers: localhost:9092
-    producer:
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
-
-eureka:
-  client:
-    serviceUrl:
-      defaultZone: http://localhost:8761/eureka/
-  instance:
-    preferIpAddress: true
 ```
 
-### Docker Profile
+`spring.application.name` is load-bearing, not cosmetic: it is the Eureka service id that
+`@FeignClient(name = ...)` and the gateway's `lb://` URIs resolve against. A service without one
+registers as `UNKNOWN` and every caller fails with "No instances available".
 
-Each service has a `docker` Spring profile that overrides localhost URLs:
+### Docker profile
+
+Each service's second YAML document overrides only the hostnames that differ inside Compose:
 
 ```yaml
 ---
@@ -232,35 +319,38 @@ spring:
     activate:
       on-profile: docker
   datasource:
-    url: jdbc:postgresql://trip-service-postgres:5432/tripdb  # Docker service name
+    url: jdbc:postgresql://trip-service-postgres:5432/tripdb
   kafka:
     bootstrap-servers: kafka:9092
-
-eureka:
-  client:
-    serviceUrl:
-      defaultZone: http://discovery-server:8761/eureka/
 ```
 
-Run with `docker-compose up` or manually set `SPRING_PROFILES_ACTIVE=docker`.
+Eureka and Zipkin addresses are *not* repeated per service — they come from the `EUREKA_URL` and
+`ZIPKIN_ENDPOINT` environment variables that `docker-compose.yml` sets on every container.
+
+Run with `docker compose up`, or set `SPRING_PROFILES_ACTIVE=docker` manually.
 
 ## Testing
 
 ### Unit tests
 ```bash
-mvn -pl <service> test
+./mvnw -pl <service> test
 ```
 
-### Integration tests (requires Docker Compose running)
+### Integration tests (requires Docker running)
 ```bash
-docker-compose up kafka zookeeper redis discovery-server trip-service-postgres
-mvn -pl <service> -Dgroups=integration test
+docker compose up -d kafka zookeeper redis discovery-server trip-service-postgres
+./mvnw -pl <service> -Dgroups=integration test
 ```
 
 ### Full build + tests
 ```bash
-mvn clean install
+./mvnw clean install
 ```
+
+### End-to-end smoke test
+`scripts/demo.sh` is the executable version of the manual smoke test — it exercises every service
+against a running stack and exits non-zero on the first unexpected status code, so it can be run in
+CI as-is. See [Getting Started](#3-run-the-end-to-end-demo).
 
 ### Stubbing downstream services
 
@@ -297,12 +387,19 @@ mvn clean install
 ```
 
 ### Docker images
-Every service uses the same two-stage build:
-1. Build stage: `maven:3.9-eclipse-temurin-25` — compiles the module with `-pl <module> -am`
-2. Runtime stage: `eclipse-temurin:25-jre` — copies the fat JAR only
 
-The Java version is set once in the root `pom.xml` (`<java.version>25</java.version>`) and must match
-the base image tags above. Keep the three in sync when upgrading.
+All 14 Dockerfiles are generated from one template and are identical apart from the module name and
+port:
+
+1. **Build stage** — `maven:3.9-eclipse-temurin-25`, compiles the module with `-pl <module> -am`.
+   The whole repo is copied in because the root pom declares every module, so Maven's reactor needs
+   them all present even for a single-module build.
+2. **Runtime stage** — `eclipse-temurin:25-jre`, plus `curl` for the healthcheck. Runs as the
+   unprivileged `uberlite` user, honours `JAVA_OPTS`, and declares a `HEALTHCHECK` against
+   `/actuator/health` so Compose's `condition: service_healthy` has something real to wait on.
+
+The Java version is set once in the root `pom.xml` (`<java.version>25</java.version>`) and must
+match the base image tags. Keep the three in sync when upgrading.
 
 Build a single service image:
 ```bash
@@ -321,32 +418,105 @@ docker build -t uberlite/<service-name>:latest -f <service-name>/Dockerfile .
 
 ## Observability
 
-All services expose Spring Boot Actuator endpoints:
+### Actuator
+
+Every service exposes the same endpoints, because they are configured once rather than per module:
+
 ```
-GET /actuator/health              # Service health
-GET /actuator/prometheus          # Metrics (if Micrometer configured)
-GET /actuator/loggers             # Runtime log level adjustment
+GET /actuator/health        # composite health: db, redis, kafka, Eureka registration
+GET /actuator/info          # service name, JVM, OS
+GET /actuator/metrics       # Micrometer metrics
+GET /actuator/prometheus    # the same, in Prometheus scrape format
 ```
 
-See `ARCHITECTURE.md` §5 for stretch goal (Zipkin tracing).
+`/actuator/health` is also what each container's `HEALTHCHECK` polls, which is what makes
+`depends_on: condition: service_healthy` in `docker-compose.yml` mean "genuinely callable" rather
+than "process has started".
+
+### Aggregate view
+
+```
+GET http://localhost:8080/health/aggregate
+```
+
+The API gateway fans out to every instance Eureka knows about and returns one document. It answers
+`200` only when everything is `UP`, `503` otherwise, so `curl -f` is a sufficient CI gate. Instances
+are reported individually, so a partial outage ("3 of 4 up") is visible rather than averaged away.
+
+It is deliberately *not* folded into the gateway's own `/actuator/health` — the gateway's health
+must describe the gateway, or Compose would restart a perfectly healthy gateway because an unrelated
+analytics service was still booting.
+
+### Distributed tracing
+
+Micrometer Tracing with the Brave bridge, reporting to the Zipkin container at
+http://localhost:9411. Trace context propagates over both HTTP hops (`feign-micrometer` on every
+service that has a Feign client) and Kafka, so a single trip request appears as one trace across
+every service it touches.
+
+Sampling is set to 100% via `TRACING_SAMPLE_RATE`, which is a demo setting — turn it down before
+this ever sees real traffic.
+
+`scripts/demo.sh` generates its own B3 trace id and sends it as a `b3:` header, then prints a direct
+link to the resulting trace, so verifying the fan-out never depends on guessing which trace was
+yours.
 
 ## Troubleshooting
 
-**Service not registering with Eureka?**
-- Check `eureka.client.serviceUrl.defaultZone` in application.yml
-- Ensure Eureka server is running on :8761
+**`docker compose up` hangs with services stuck in `starting`?**
+- `docker compose ps` shows which one. A service that never turns `healthy` blocks everything
+  declared `depends_on` it.
+- `docker compose logs -f <service>` for the reason. The healthcheck is `/actuator/health`, so the
+  service is reporting a component down — usually its database or Kafka.
+- On a cold cache the first build is slow; `start_period` is 120s per service before failures count.
+
+**A service isn't in the Eureka dashboard?**
+- Check it has `spring.application.name` set. Without it the service registers as `UNKNOWN` and no
+  `@FeignClient(name = ...)` or `lb://` route can resolve it.
+- Check `EUREKA_URL` reached the container: `docker compose exec <service> env | grep EUREKA`.
+
+**Feign calls fail with "No instances available for X"?**
+- `X` must exactly equal the target's `spring.application.name`. This is the single most common
+  break: the id in `@FeignClient(name = "…")`, the gateway's `lb://…`, and the target's
+  `spring.application.name` are three copies of one string.
+- Confirm at http://localhost:8761 that `X` is registered and `UP`.
+
+**Gateway returns 404 for a path that works against the service directly?**
+- The route table is `spring.cloud.gateway.server.webflux.routes` in `api-gateway/application.yml`.
+  Under the older `spring.cloud.gateway.routes` prefix the routes silently parse as nothing and the
+  gateway starts with an empty table. `ApiGatewayRoutesTest` guards this.
+
+**`scripts/demo.sh` fails at "waiting for the stack"?**
+- Read the aggregate report it dumps on failure: it names the service that is down.
+- Raise the budget with `READY_TIMEOUT_SECONDS=600` on a slow machine.
 
 **Kafka producer/consumer failing?**
-- Ensure Kafka broker is running on :9092 (or configured host)
-- Check topic name spelling (trip-events is hardcoded in multiple places)
+- From inside Compose the broker is `kafka:9092`; from the host it is `localhost:29092`. Using the
+  wrong one gives a connection that handshakes and then times out.
+- Topic names come from `common` — never inline the string.
 
 **Database connection refused?**
-- Check Postgres service name and port in datasource URL (localhost:5432 locally, docker-compose service name in Docker)
-- Verify credentials match POSTGRES_USER/POSTGRES_PASSWORD in docker-compose.yml
+- Default (no profile) is `localhost:<published-port>`; the `docker` profile uses the Compose
+  hostname on 5432. The published ports are listed in the infrastructure table above.
+- Verify credentials match `POSTGRES_USER`/`POSTGRES_PASSWORD` in `docker-compose.yml`.
+
+**Stale schema or weird data after a rebuild?**
+- `docker compose down -v` drops the Postgres volumes so Flyway re-runs from scratch.
 
 **Port conflicts?**
-- Each service has a unique port (8083–8094). Check docker-compose.yml if running multiple.
-- If running multiple locally, override with `-Dserver.port=8XXX` in mvn command.
+- Services occupy 8080, 8083–8094, 8761, 9411, 6379 and 5433–5438. Override a locally run service
+  with `-Dserver.port=…`.
+
+## Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/demo.sh` | Full happy-path trip lifecycle against a running stack. Prints every request/response, exits non-zero on the first unexpected status code. |
+| `scripts/check-config-consistency.py` | Cross-checks `server.port` and `spring.application.name` against each Dockerfile, `docker-compose.yml` and the gateway route table. |
+
+`server.port` and `spring.application.name` are each duplicated in four places, and drift between
+them is silent — a service with the wrong name registers as `UNKNOWN` and callers only fail at
+runtime. No Java test can see across all four files, so the consistency check runs in CI.
 
 ## Contributing
 
