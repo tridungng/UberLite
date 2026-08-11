@@ -1,4 +1,4 @@
-package com.uberlite.matching.api;
+package com.uberlite.matching;
 
 import com.uberlite.common.testing.StubServer;
 import com.uberlite.common.testing.StubServer.Stub;

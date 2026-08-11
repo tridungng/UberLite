@@ -1,4 +1,4 @@
-package com.uberlite.taxtolls;
+package com.uberlite.taxtolls.domain;
 
 import com.uberlite.common.dto.RouteDto;
 import com.uberlite.taxtolls.domain.TaxTollLookup;
@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-public class TollCalculatorTest {
+class TollCalculatorTest {
     @Test
     void toll_applies_above_threshold() {
         TaxTollLookup lookup = new TaxTollLookup(null, null);

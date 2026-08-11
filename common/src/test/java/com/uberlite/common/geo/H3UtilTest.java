@@ -7,9 +7,9 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-public class H3UtilTest {
+class H3UtilTest {
     @Test
-    public void latLngToCellIsStable() {
+    void latLngToCellIsStable() {
         double lat = 37.775938728915946;
         double lon = -122.41795063018799;
         String cell1 = H3Util.latLngToCell(lat, lon, 8);
@@ -18,7 +18,7 @@ public class H3UtilTest {
     }
 
     @Test
-    public void gridDiskNeighborsCountForK1() {
+    void gridDiskNeighborsCountForK1() {
         double lat = 37.775938728915946;
         double lon = -122.41795063018799;
         String cell = H3Util.latLngToCell(lat, lon, 8);

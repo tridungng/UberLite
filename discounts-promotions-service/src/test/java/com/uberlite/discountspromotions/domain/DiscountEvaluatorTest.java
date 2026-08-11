@@ -1,8 +1,8 @@
-package com.uberlite.discountspromotions;
+package com.uberlite.discountspromotions.domain;
 
 import com.uberlite.discountspromotions.domain.DiscountEvaluator;
 import com.uberlite.discountspromotions.domain.DiscountRuleFactory;
-import com.uberlite.discountspromotions.repository.PromoRuleEntity;
+import com.uberlite.discountspromotions.repository.entity.PromoRuleEntity;
 import com.uberlite.discountspromotions.repository.PromoRuleRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

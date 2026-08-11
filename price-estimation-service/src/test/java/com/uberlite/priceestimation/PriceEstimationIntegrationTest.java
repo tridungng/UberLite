@@ -1,4 +1,4 @@
-package com.uberlite.priceestimation.api;
+package com.uberlite.priceestimation;
 
 import com.uberlite.common.geo.H3Util;
 import com.uberlite.common.testing.StubServer;

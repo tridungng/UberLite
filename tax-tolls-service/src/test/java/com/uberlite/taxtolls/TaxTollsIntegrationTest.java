@@ -23,7 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "eureka.client.enabled=false",
         "spring.cloud.discovery.enabled=false"
 })
-public class TaxTollsIntegrationTest {
+class TaxTollsIntegrationTest {
 
     @Container
     public static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15")
