@@ -1,9 +1,20 @@
 spring:
   application:
     name: surge-pricing-service
-  redis:
-    host: localhost
-    port: 6379
+  data:
+    # `spring.redis.*` was removed in Boot 3 - the working key is `spring.data.redis.*`.
+    redis:
+      host: localhost
+      port: 6379
+  cloud:
+    openfeign:
+      client:
+        config:
+          # `feign.client.config.*` was removed too; under the old prefix these timeouts were
+          # silently ignored and the test fell back to Feign's 10s/60s defaults.
+          default:
+            connectTimeout: 1000
+            readTimeout: 1000
 
 server:
   port: 0
@@ -12,9 +23,3 @@ eureka:
   client:
     enabled: false
 
-feign:
-  client:
-    config:
-      default:
-        connectTimeout: 1000
-        readTimeout: 1000

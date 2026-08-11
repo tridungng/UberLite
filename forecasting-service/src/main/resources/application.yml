@@ -2,6 +2,8 @@ server:
   port: 8092
 
 spring:
+  config:
+    import: "optional:classpath:uberlite-defaults.yml"
   application:
     name: forecasting-service
   datasource:
@@ -37,24 +39,6 @@ forecasting:
   window-days: 7
   # Demand is a wall-clock phenomenon; single-region MVP (ARCHITECTURE.md Sec. 9), so one zone.
   zone: UTC
-
-eureka:
-  client:
-    serviceUrl:
-      defaultZone: http://localhost:8761/eureka/
-  instance:
-    lease-renewal-interval-in-seconds: 10
-    lease-expiration-duration-in-seconds: 30
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info
-  endpoint:
-    health:
-      show-details: when-authorized
-
 ---
 spring:
   config:
@@ -64,11 +48,3 @@ spring:
     url: jdbc:postgresql://forecasting-postgres:5432/forecastingdb
   kafka:
     bootstrap-servers: kafka:9092
-
-eureka:
-  client:
-    serviceUrl:
-      defaultZone: http://discovery-server:8761/eureka/
-  instance:
-    prefer-ip-address: true
-

@@ -1,0 +1,59 @@
+# ---------------------------------------------------------------------------------------------
+# Shared platform defaults for every UberLite service.
+#
+# Imported by each module's application.yml with:
+#
+#     spring:
+#       config:
+#         import: "optional:classpath:uberlite-defaults.yml"
+#
+# Values in an imported document have LOWER precedence than the importing document, so a service
+# can still override anything here locally. Actuator exposure, tracing and the Eureka instance
+# lease policy live here rather than being copy-pasted 14 times: issue 11 asks for these to be
+# *consistent everywhere*, and the only way to keep that true is to define them once.
+#
+# Anything genuinely per-service (server.port, datasource, Kafka, business config) stays in the
+# service's own application.yml.
+# ---------------------------------------------------------------------------------------------
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # health + info are the contract from copilot-instructions.md; metrics/prometheus are the
+        # Micrometer surface added by this issue.
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      # No auth in the MVP (ARCHITECTURE.md Sec. 9), so "when-authorized" resolves to "never" and
+      # silently hides the component detail that makes `docker compose up` debuggable.
+      show-details: always
+      probes:
+        # Gives /actuator/health/readiness, which is what the Compose healthchecks poll: a service
+        # is only "up" for depends_on purposes once its dependencies are reachable too.
+        enabled: true
+  info:
+    env:
+      enabled: true
+    java:
+      enabled: true
+    os:
+      enabled: true
+info:
+  app:
+    name: ${spring.application.name:unknown}
+    description: UberLite MVP service
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+  instance:
+    # Compose assigns container IPs but no resolvable per-instance hostname, so registering the IP
+    # is what makes lb://<service-id> resolvable from another container.
+    prefer-ip-address: true
+    # Tighter than the 30s/90s default: a container that dies during a demo should fall out of the
+    # registry in ~30s rather than blackholing calls for a minute and a half.
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
+

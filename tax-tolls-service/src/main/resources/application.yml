@@ -2,11 +2,16 @@ server:
   port: 8090
 
 spring:
+  config:
+    import: "optional:classpath:uberlite-defaults.yml"
   application:
     name: tax-tolls-service
 
   datasource:
-    url: jdbc:postgresql://tax-tolls-postgres:5432/taxtollsdb
+    # localhost is the default so the module is runnable standalone
+    # (`mvn -pl tax-tolls-service spring-boot:run`); the docker profile below swaps in the Compose
+    # hostname. Previously this was hardcoded to the Compose hostname with no docker profile at all.
+    url: jdbc:postgresql://localhost:5434/taxtollsdb
     username: uberlite
     password: changeme
   jpa:
@@ -16,19 +21,10 @@ spring:
     enabled: true
     locations: classpath:db/migration
 
-eureka:
-  client:
-    serviceUrl:
-      defaultZone: http://localhost:8761/eureka/
-  instance:
-    lease-renewal-interval-in-seconds: 10
-    lease-expiration-duration-in-seconds: 30
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info
-  endpoint:
-    health:
-      show-details: when-authorized
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+  datasource:
+    url: jdbc:postgresql://tax-tolls-postgres:5432/taxtollsdb

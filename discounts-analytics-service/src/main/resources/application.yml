@@ -2,6 +2,8 @@ server:
   port: 8094
 
 spring:
+  config:
+    import: "optional:classpath:uberlite-defaults.yml"
   application:
     name: discounts-analytics-service
   datasource:
@@ -30,24 +32,6 @@ discounts-analytics:
   trip-threshold: 3
   # 02:00 daily — after the evening peak has settled, before the morning one starts.
   cron: "0 0 2 * * *"
-
-eureka:
-  client:
-    serviceUrl:
-      defaultZone: http://localhost:8761/eureka/
-  instance:
-    lease-renewal-interval-in-seconds: 10
-    lease-expiration-duration-in-seconds: 30
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info
-  endpoint:
-    health:
-      show-details: when-authorized
-
 ---
 spring:
   config:
@@ -55,10 +39,3 @@ spring:
       on-profile: docker
   datasource:
     url: jdbc:postgresql://discounts-analytics-postgres:5432/discountsanalyticsdb
-
-eureka:
-  client:
-    serviceUrl:
-      defaultZone: http://discovery-server:8761/eureka/
-  instance:
-    prefer-ip-address: true

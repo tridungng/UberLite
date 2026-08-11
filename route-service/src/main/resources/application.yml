@@ -1,0 +1,12 @@
+spring:
+  config:
+    import: "optional:classpath:uberlite-defaults.yml"
+  application:
+    # Without this the service registers with Eureka as UNKNOWN, and the
+    # @FeignClient(name = "route-service") lookups in price-estimation-service and matching-service
+    # fail with "No instances available".
+    name: route-service
+
+server:
+  port: 8087
+

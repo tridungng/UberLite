@@ -1,4 +1,6 @@
 spring:
+  config:
+    import: "optional:classpath:uberlite-defaults.yml"
   application:
     name: discovery-server
 server:
@@ -6,16 +8,11 @@ server:
 
 eureka:
   client:
+    # This *is* the registry: it must not try to register with or fetch from itself.
     register-with-eureka: false
     fetch-registry: false
-
----
-# Docker profile: point clients at the compose service names
-spring:
-  config:
-    activate:
-      on-profile: docker
-  application:
-    name: discovery-server
-server:
-  port: 8761
+  server:
+    # Self-preservation would keep dead Compose containers in the registry after a `docker compose
+    # down` of one service, which is exactly the wrong behaviour for a local demo environment.
+    enable-self-preservation: false
+    eviction-interval-timer-in-ms: 5000

@@ -2,6 +2,8 @@ server:
   port: 8093
 
 spring:
+  config:
+    import: "optional:classpath:uberlite-defaults.yml"
   application:
     name: matching-analytics-service
   datasource:
@@ -31,24 +33,6 @@ spring:
         spring.json.value.default.type: com.uberlite.common.events.TripEvent
         # Narrower than "*": only the shared event package is trusted.
         spring.json.trusted.packages: com.uberlite.common.events
-
-eureka:
-  client:
-    serviceUrl:
-      defaultZone: http://localhost:8761/eureka/
-  instance:
-    lease-renewal-interval-in-seconds: 10
-    lease-expiration-duration-in-seconds: 30
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info
-  endpoint:
-    health:
-      show-details: when-authorized
-
 ---
 spring:
   config:
@@ -58,10 +42,3 @@ spring:
     url: jdbc:postgresql://matching-analytics-postgres:5432/matchinganalyticsdb
   kafka:
     bootstrap-servers: kafka:9092
-
-eureka:
-  client:
-    serviceUrl:
-      defaultZone: http://discovery-server:8761/eureka/
-  instance:
-    prefer-ip-address: true

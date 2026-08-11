@@ -1,41 +1,23 @@
 spring:
+  config:
+    import: "optional:classpath:uberlite-defaults.yml"
   application:
     name: surge-pricing-service
-  redis:
-    host: localhost
-    port: 6379
-  profiles:
-    active: default
+  data:
+    # `spring.redis.*` was removed in Boot 3; under that key the service silently kept the default
+    # localhost:6379 and never reached the Compose Redis.
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
 
 server:
   port: 8084
-
-eureka:
-  client:
-    serviceUrl:
-      defaultZone: http://localhost:8761/eureka/
-  instance:
-    prefer-ip-address: true
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health
-  endpoint:
-    health:
-      show-details: always
 
 ---
 spring:
   config:
     activate:
       on-profile: docker
-  redis:
-    host: redis
-    port: 6379
-
-eureka:
-  client:
-    serviceUrl:
-      defaultZone: http://discovery-server:8761/eureka/
+  data:
+    redis:
+      host: redis

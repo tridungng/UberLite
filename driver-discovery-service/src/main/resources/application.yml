@@ -1,7 +1,23 @@
 server:
-  port: 8080
+  port: 8086
 spring:
+  config:
+    import: "optional:classpath:uberlite-defaults.yml"
+  application:
+    # Must match @FeignClient(name = "driver-discovery-service") in matching-service and
+    # surge-pricing-service. Previously absent, so the service registered with Eureka as UNKNOWN
+    # and neither caller could resolve it.
+    name: driver-discovery-service
   data:
     redis:
-      host: ${REDIS_HOST:redis}
+      host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+  data:
+    redis:
+      host: redis

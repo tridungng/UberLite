@@ -1,0 +1,10 @@
+spring:
+  config:
+    import: "optional:classpath:uberlite-defaults.yml"
+  application:
+    # Must match @FeignClient(name = "time-estimation-service") in price-estimation-service.
+    name: time-estimation-service
+
+server:
+  port: 8088
+
