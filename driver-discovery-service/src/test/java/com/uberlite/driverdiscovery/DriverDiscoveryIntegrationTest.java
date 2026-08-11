@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 @Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @EnabledIfEnvironmentVariable(named = "RUN_INTEGRATION_TESTS", matches = "true")
-public class DriverDiscoveryIntegrationTest {
+class DriverDiscoveryIntegrationTest {
 
     @Container
     static final GenericContainer<?> REDIS =
@@ -71,7 +71,7 @@ public class DriverDiscoveryIntegrationTest {
     }
 
     @Test
-    public void nearbyOrdering() throws Exception {
+    void nearbyOrdering() throws Exception {
         String base = "http://localhost:" + port;
         rest.postForEntity(base + "/drivers/d1/location", new LocationDto(37.7749, -122.4194), Void.class);
         rest.postForEntity(base + "/drivers/d2/location", new LocationDto(37.7758, -122.4183), Void.class);

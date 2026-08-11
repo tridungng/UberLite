@@ -2,8 +2,10 @@ package com.uberlite.driverdiscovery.api;
 
 import com.uberlite.common.dto.DriverCandidateDto;
 import com.uberlite.common.dto.LocationDto;
-import com.uberlite.driverdiscovery.service.DriverStoreService;
+import com.uberlite.driverdiscovery.api.dto.StatusUpdateRequest;
+import com.uberlite.driverdiscovery.domain.DriverStoreService;
 
+import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -37,21 +39,16 @@ public class DriverController {
     }
 
     /**
-     * Simple DTO used by the status update endpoint.
-     */
-    public static class StatusUpdate {
-        public String status;
-    }
-    /**
      * Update the availability status of a driver.
      *
      * @param driverId id of the driver
-     * @param s wrapper containing the new status value
+     * @param request wrapper containing the new status value
      * @return HTTP 200 on success
      */
     @PostMapping("/{driverId}/status")
-    public ResponseEntity<Void> updateStatus(@PathVariable String driverId, @RequestBody StatusUpdate s) {
-        store.setStatus(driverId, s.status);
+    public ResponseEntity<Void> updateStatus(
+            @PathVariable String driverId, @Valid @RequestBody StatusUpdateRequest request) {
+        store.setStatus(driverId, request.getStatus());
         return ResponseEntity.ok().build();
     }
 

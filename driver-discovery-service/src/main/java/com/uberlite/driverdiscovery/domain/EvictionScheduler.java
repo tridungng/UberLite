@@ -1,6 +1,6 @@
-package com.uberlite.driverdiscovery.schedule;
+package com.uberlite.driverdiscovery.domain;
 
-import com.uberlite.driverdiscovery.service.DriverStoreService;
+import com.uberlite.driverdiscovery.domain.DriverStoreService;
 
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;

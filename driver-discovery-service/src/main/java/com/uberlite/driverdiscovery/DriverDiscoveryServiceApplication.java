@@ -14,7 +14,7 @@ import java.time.Clock;
  */
 @EnableScheduling
 @SpringBootApplication
-public class DriverDiscoveryApplication {
+public class DriverDiscoveryServiceApplication {
     /**
      * Application entry point. Starts the Spring context for this service.
      * <p>
@@ -22,8 +22,8 @@ public class DriverDiscoveryApplication {
      *
      * @param args runtime arguments passed to SpringApplication
      */
-    static void main(String[] args) {
-        SpringApplication.run(DriverDiscoveryApplication.class, args);
+    public static void main(String[] args) {
+        SpringApplication.run(DriverDiscoveryServiceApplication.class, args);
     }
 
     /**

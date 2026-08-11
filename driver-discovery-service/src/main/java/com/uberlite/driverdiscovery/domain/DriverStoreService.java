@@ -1,4 +1,4 @@
-package com.uberlite.driverdiscovery.service;
+package com.uberlite.driverdiscovery.domain;
 
 import com.uberlite.common.dto.DriverCandidateDto;
 import com.uberlite.common.dto.LocationDto;

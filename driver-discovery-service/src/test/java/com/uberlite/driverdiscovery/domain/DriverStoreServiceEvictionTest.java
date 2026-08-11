@@ -1,6 +1,6 @@
-package com.uberlite.driverdiscovery;
+package com.uberlite.driverdiscovery.domain;
 
-import com.uberlite.driverdiscovery.service.DriverStoreService;
+import com.uberlite.driverdiscovery.domain.DriverStoreService;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-public class DriverStoreServiceEvictionTest {
+class DriverStoreServiceEvictionTest {
     @Mock
     private RedisTemplate<String, String> redis;
 
@@ -36,13 +36,13 @@ public class DriverStoreServiceEvictionTest {
     private HashOperations<String, Object, Object> hs;
 
     @BeforeEach
-    public void setup() {
+    void setup() {
         when(redis.opsForZSet()).thenReturn(zOps);
         when(redis.opsForGeo()).thenReturn(geoOps);
     }
 
     @Test
-    public void evictStale() {
+    void evictStale() {
         long now = Instant.parse("2026-08-07T12:00:00Z").getEpochSecond();
         Clock clock = Clock.fixed(Instant.parse("2026-08-07T12:00:00Z"), ZoneOffset.UTC);
         when(zOps.range("drivers:active", 0, -1)).thenReturn(Set.of("d1", "d2"));
