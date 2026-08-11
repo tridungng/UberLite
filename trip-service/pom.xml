@@ -36,9 +36,15 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
+        <!--
+          The Boot starter, not a bare org.springframework.kafka:spring-kafka. Under Boot 4 the
+          Kafka auto-configuration lives in its own module rather than in spring-boot-autoconfigure.
+          This service builds its own producer, but without the auto-configuration there is no
+          KafkaAdmin, so the NewTopic bean in KafkaConfig never actually creates trip-events.
+        -->
         <dependency>
-            <groupId>org.springframework.kafka</groupId>
-            <artifactId>spring-kafka</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-kafka</artifactId>
         </dependency>
 
         <!-- Synchronous calls to Price Estimation, Matching and Surge Pricing, resolved by
