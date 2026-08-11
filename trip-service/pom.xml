@@ -12,7 +12,7 @@
 
     <artifactId>trip-service</artifactId>
     <packaging>jar</packaging>
-    <name>UberLite Trip Service</name>
+    <name>Trip Service</name>
 
     <dependencies>
         <dependency>

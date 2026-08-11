@@ -13,7 +13,7 @@
 
     <artifactId>surge-pricing-service</artifactId>
     <packaging>jar</packaging>
-    <name>UberLite Surge Pricing Service</name>
+    <name>Surge Pricing Service</name>
 
     <dependencies>
         <dependency>
