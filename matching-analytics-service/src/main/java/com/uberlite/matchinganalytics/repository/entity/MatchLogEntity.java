@@ -1,4 +1,4 @@
-package com.uberlite.matchinganalytics.repository;
+package com.uberlite.matchinganalytics.repository.entity;
 
 import com.uberlite.matchinganalytics.domain.MatchOutcome;
 import jakarta.persistence.Column;

@@ -1,4 +1,4 @@
-package com.uberlite.discountsanalytics.repository;
+package com.uberlite.discountsanalytics.repository.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

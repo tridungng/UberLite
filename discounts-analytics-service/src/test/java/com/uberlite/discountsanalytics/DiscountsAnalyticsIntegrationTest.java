@@ -3,7 +3,7 @@ package com.uberlite.discountsanalytics;
 import com.uberlite.common.dto.RiderTripCountDto;
 import com.uberlite.discountsanalytics.domain.PromoFlagger;
 import com.uberlite.discountsanalytics.domain.RiderTripCountSource;
-import com.uberlite.discountsanalytics.repository.PromoCandidateEntity;
+import com.uberlite.discountsanalytics.repository.entity.PromoCandidateEntity;
 import com.uberlite.discountsanalytics.repository.PromoCandidateRepository;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;

@@ -2,7 +2,7 @@ package com.uberlite.forecasting.domain;
 
 import com.uberlite.common.dto.DemandForecastDto;
 import com.uberlite.forecasting.config.ForecastingProperties;
-import com.uberlite.forecasting.repository.DemandCountEntity;
+import com.uberlite.forecasting.repository.entity.DemandCountEntity;
 import com.uberlite.forecasting.repository.DemandCountRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

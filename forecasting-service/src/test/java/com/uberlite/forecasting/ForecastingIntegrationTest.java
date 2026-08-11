@@ -5,7 +5,7 @@ import com.uberlite.common.events.TripEvent;
 import com.uberlite.common.events.TripEventPayloadKeys;
 import com.uberlite.common.events.TripState;
 import com.uberlite.common.geo.H3Util;
-import com.uberlite.forecasting.repository.DemandCountEntity;
+import com.uberlite.forecasting.repository.entity.DemandCountEntity;
 import com.uberlite.forecasting.repository.DemandCountRepository;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.flywaydb.core.Flyway;

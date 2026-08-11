@@ -2,7 +2,7 @@ package com.uberlite.discountsanalytics.api;
 
 import com.uberlite.discountsanalytics.api.dto.PromoCandidateDto;
 import com.uberlite.discountsanalytics.domain.PromoFlagger;
-import com.uberlite.discountsanalytics.repository.PromoCandidateEntity;
+import com.uberlite.discountsanalytics.repository.entity.PromoCandidateEntity;
 import com.uberlite.discountsanalytics.repository.PromoCandidateRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;

@@ -1,4 +1,4 @@
-package com.uberlite.forecasting.repository;
+package com.uberlite.forecasting.repository.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;

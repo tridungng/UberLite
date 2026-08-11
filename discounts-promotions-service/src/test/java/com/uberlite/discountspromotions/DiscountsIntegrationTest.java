@@ -1,6 +1,6 @@
 package com.uberlite.discountspromotions;
 
-import com.uberlite.discountspromotions.repository.PromoRuleEntity;
+import com.uberlite.discountspromotions.repository.entity.PromoRuleEntity;
 import com.uberlite.discountspromotions.repository.PromoRuleRepository;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;

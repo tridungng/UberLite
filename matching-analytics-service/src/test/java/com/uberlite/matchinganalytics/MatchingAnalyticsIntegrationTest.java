@@ -5,7 +5,7 @@ import com.uberlite.common.events.TripEvent;
 import com.uberlite.common.events.TripEventPayloadKeys;
 import com.uberlite.common.events.TripState;
 import com.uberlite.matchinganalytics.domain.MatchOutcome;
-import com.uberlite.matchinganalytics.repository.MatchLogEntity;
+import com.uberlite.matchinganalytics.repository.entity.MatchLogEntity;
 import com.uberlite.matchinganalytics.repository.MatchLogRepository;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.flywaydb.core.Flyway;

@@ -1,6 +1,6 @@
 package com.uberlite.discountspromotions.domain;
 
-import com.uberlite.discountspromotions.repository.PromoRuleEntity;
+import com.uberlite.discountspromotions.repository.entity.PromoRuleEntity;
 import com.uberlite.discountspromotions.repository.PromoRuleRepository;
 import org.springframework.stereotype.Service;
 
