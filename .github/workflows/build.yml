@@ -8,74 +8,60 @@ on:
 
 jobs:
   build:
+    name: Build & unit/integration tests
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_DB: tripdb
-          POSTGRES_USER: uberlite
-          POSTGRES_PASSWORD: changeme
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-
-      kafka:
-        image: confluentinc/cp-kafka:8.2.2
-        env:
-          KAFKA_BROKER_ID: 1
-          KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-          KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-          KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-          KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
-        options: >-
-          --health-cmd "kafka-broker-api-versions --bootstrap-server localhost:9092"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 9092:9092
-
-      zookeeper:
-        image: confluentinc/cp-zookeeper:8.2.2
-        env:
-          ZOOKEEPER_CLIENT_PORT: 2181
-          ZOOKEEPER_TICK_TIME: 2000
-        options: >-
-          --health-cmd "echo stat | nc localhost 2181"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 2181:2181
-
-      redis:
-        image: redis:7.2
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 6379:6379
-
     steps:
-    - uses: actions/checkout@v3
-    
-    - name: Set up JDK 27
-      uses: actions/setup-java@v3
-      with:
-        java-version: '27'
-        distribution: 'temurin'
-        cache: maven
-    
-    - name: Build with Maven
-      run: mvn clean install -DskipTests
-    
-    - name: Run Tests
-      run: mvn test
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          # Must match <java.version> in the root pom and the Dockerfile base image tags.
+          java-version: '25'
+          distribution: 'temurin'
+          cache: maven
+
+      # No `services:` block any more. The integration tests bring up their own Postgres via
+      # Testcontainers and their own broker via @EmbeddedKafka, so the pre-provisioned service
+      # containers were unused and had drifted out of sync with what the tests connect to.
+      - name: Build and test
+        run: ./mvnw -B clean install
+
+      - name: Check config consistency across yml / Dockerfile / compose / gateway routes
+        run: python3 scripts/check-config-consistency.py
+
+      - name: Upload surefire reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: '**/target/surefire-reports/**'
+
+  e2e:
+    name: docker compose + demo.sh
+    runs-on: ubuntu-latest
+    # The point of issue 11: prove the services work *together*, not just that each one compiles.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      # --wait blocks until every container reports healthy, which works because each image
+      # declares a HEALTHCHECK against /actuator/health.
+      - name: Bring the stack up
+        run: docker compose up --build --detach --wait
+
+      - name: Run the end-to-end demo
+        run: ./scripts/demo.sh
+
+      - name: Dump container state on failure
+        if: failure()
+        run: |
+          docker compose ps
+          docker compose logs --tail 200
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
