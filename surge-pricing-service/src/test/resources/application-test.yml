@@ -23,3 +23,7 @@ eureka:
   client:
     enabled: false
 
+# No collector in tests; without this the reporter logs a connection failure on every span.
+management:
+  tracing:
+    enabled: false

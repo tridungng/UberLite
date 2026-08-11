@@ -46,6 +46,24 @@
             <scope>test</scope>
         </dependency>
 
+        <!--
+          Issue 11: one trace per rider request across every hop. micrometer-tracing-bridge-brave
+          creates/propagates the B3 context, zipkin-reporter-brave ships the finished spans to the
+          Zipkin container. Versions come from the Spring Boot BOM - do not pin them here.
+        -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-bridge-brave</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.zipkin.reporter2</groupId>
+            <artifactId>zipkin-reporter-brave</artifactId>
+        </dependency>
+        <!-- Backs /actuator/prometheus (ARCHITECTURE.md Sec. 5, "Micrometer"). -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>org.springframework.cloud</groupId>

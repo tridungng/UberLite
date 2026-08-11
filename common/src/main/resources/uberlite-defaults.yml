@@ -39,6 +39,15 @@ management:
       enabled: true
     os:
       enabled: true
+  tracing:
+    sampling:
+      # 1.0 is a demo/dev setting: every request is sampled so scripts/demo.sh always produces a
+      # complete trace. Turn this down via TRACING_SAMPLE_RATE before this ever sees real traffic.
+      probability: ${TRACING_SAMPLE_RATE:1.0}
+  zipkin:
+    tracing:
+      endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
+
 info:
   app:
     name: ${spring.application.name:unknown}
