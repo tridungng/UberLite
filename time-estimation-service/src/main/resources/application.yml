@@ -8,3 +8,8 @@ spring:
 server:
   port: 8088
 
+# MVP stand-in for live traffic (ARCHITECTURE.md Sec. 2, "TES"). Both values are tunables rather
+# than constants in HeatmapService so a demo can be re-pointed without a rebuild.
+time-estimation:
+  base-minutes: 10.0
+  heatmap-seed: classpath:heatmap-seed.json
