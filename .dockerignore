@@ -1,15 +1,28 @@
 # Every Dockerfile copies the whole repo (the Maven reactor needs all modules present), so keep
-# build-context junk out: it bloats the context and can leak a stale host-built JAR into the image.
-target/
-*/target/
+# build-context junk out: it bloats the context, it can leak a stale host-built JAR into the image,
+# and anything in here that changes often needlessly invalidates the `COPY . .` layer - and with it
+# the Maven build - for all 14 images.
+#
+# `**/target/` rather than `target/` + `*/target/`: the old pair only reached one directory deep.
+**/target/
 .git/
+.gitattributes
 .gitignore
+.github/
 .idea/
 *.iml
 .mvn/wrapper/maven-wrapper.jar
-**/*.log
-.DS_Store
+
+# Not inputs to the build. Editing a doc, the compose file, a Dockerfile or a helper script must
+# not trigger a recompile of every service.
 docker-compose.yml
+Dockerfile
+Dockerfile.*
+**/Dockerfile
 **/README.md
 ARCHITECTURE.md
+scripts/
+
+**/*.log
+.DS_Store
 
