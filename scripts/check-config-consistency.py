@@ -58,6 +58,52 @@ def dockerfile_ports(module):
     return (exposed.group(1) if exposed else None), (probed.group(1) if probed else None)
 
 
+# The registry is the one service everything may wait for: it depends on nothing itself, so it
+# cannot create a chain. Everything else finds its peers through Eureka at call time.
+ALLOWED_SERVICE_DEPENDENCY = {"discovery-server"}
+
+
+def compose_service_dependencies():
+    """Maps each service built from this repo to the other *repo-built* services it waits for.
+
+    A service-to-service `depends_on` re-couples the deployment units: it serialises startup, it
+    makes `docker compose up <one-service>` drag half the stack in, and when something fails it
+    reports the blocked services rather than the broken one. It also cannot be honoured in
+    production, where the scheduler starts pods in whatever order it likes - so a service that needs
+    it is broken there too. See docker-compose.yml's header and the root README.
+    """
+    text = open("docker-compose.yml").read()
+    services_block = text.split("\nservices:\n", 1)[1].split("\nnetworks:", 1)[0]
+    blocks = {name: body for name, body in re.findall(
+        r"^  ([a-z0-9-]+):$(.*?)(?=^  [a-z0-9-]+:$|\Z)", services_block, re.M | re.S)}
+
+    built = {name for name, body in blocks.items() if re.search(r"^\s+build:$", body, re.M)}
+    offenders = {}
+    for name in built:
+        depends = re.search(r"^    depends_on:$(.*?)(?=^    [a-z_]+:|\Z)",
+                            blocks[name], re.M | re.S)
+        if not depends:
+            continue
+        targets = set(re.findall(r"^      ([a-z0-9-]+):$", depends.group(1), re.M))
+        bad = sorted((targets & built) - ALLOWED_SERVICE_DEPENDENCY - {name})
+        if bad:
+            offenders[name] = bad
+    return offenders
+
+
+def dockerfile_probe_is_liveness(module):
+    """The container probe must be the liveness group, not the composite health endpoint.
+
+    The composite aggregates Eureka and the datastores, so probing it lets an unrelated dependency
+    mark a healthy container unhealthy - and a restart, the only thing a runtime can do about it,
+    never fixes the dependency.
+    """
+    path = os.path.join(module, "Dockerfile")
+    if not os.path.exists(path):
+        return True
+    return "/actuator/health/liveness" in open(path).read()
+
+
 def main():
     ports, names = load_module_config()
     compose = load_compose_ports()
@@ -91,10 +137,17 @@ def main():
             issues.append(f"compose container port {pub[1]} != server.port {port}")
         if name and name not in routed and module not in INFRA:
             issues.append("no gateway route")
+        if not dockerfile_probe_is_liveness(module):
+            issues.append("HEALTHCHECK must probe /actuator/health/liveness, not the composite")
 
         problems.extend(f"{module}: {issue}" for issue in issues)
         print(f"{module:30} {str(port):6} {str(name):30} {str(exposed):7} {str(probed):7} "
               f"{(':'.join(pub) if pub else '-'):12} {'OK' if not issues else 'MISMATCH'}")
+
+    for service, targets in sorted(compose_service_dependencies().items()):
+        problems.append(
+            f"{service}: depends_on {', '.join(targets)} - application services must not wait "
+            f"for each other (see docker-compose.yml header)")
 
     if problems:
         print("\nInconsistencies:", file=sys.stderr)
