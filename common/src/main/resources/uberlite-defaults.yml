@@ -29,9 +29,24 @@ management:
       # silently hides the component detail that makes `docker compose up` debuggable.
       show-details: always
       probes:
-        # Gives /actuator/health/readiness, which is what the Compose healthchecks poll: a service
-        # is only "up" for depends_on purposes once its dependencies are reachable too.
+        # Gives /actuator/health/liveness and /actuator/health/readiness.
         enabled: true
+      group:
+        # Liveness answers exactly one question: "should this process be restarted?". It is what
+        # each container's HEALTHCHECK polls, because a restart is the only remedy a container
+        # runtime has - and restarting this service will never fix a sick Postgres or a late
+        # Eureka. Probing the composite /actuator/health instead is what used to let one slow
+        # dependency mark half the stack unhealthy and hide the service that was actually broken.
+        liveness:
+          include: livenessState
+        # Readiness answers "should traffic be routed here?" and deliberately excludes peer
+        # services and the registry: a service that can still answer from its own state is ready
+        # even when a downstream is down. Only `readinessState` is shared, because Actuator fails
+        # startup when a group names a contributor that does not exist ("Health contributor 'db'
+        # ... does not exist") - so the six services with a database and the two with Redis add
+        # their own datastore to this group in their own application.yml.
+        readiness:
+          include: readinessState
   info:
     env:
       enabled: true
@@ -65,4 +80,48 @@ eureka:
     # registry in ~30s rather than blackholing calls for a minute and a half.
     lease-renewal-interval-in-seconds: 10
     lease-expiration-duration-in-seconds: 30
+
+# ---------------------------------------------------------------------------------------------
+# Independent deployability
+#
+# Every service must be startable on its own - `docker compose up -d <one-service>`, or a pod
+# rolled out before its peers exist. That only holds if a missing dependency is a *runtime* error
+# and not a *startup* error, which is what the settings below guarantee. See the header of
+# docker-compose.yml for the other half of the story (no service-to-service depends_on).
+# ---------------------------------------------------------------------------------------------
+server:
+  # Stop accepting new requests, let in-flight ones finish, then exit. Paired with
+  # `stop_grace_period: 30s` in docker-compose.yml: without both halves the JVM is SIGKILLed
+  # mid-request and Eureka keeps advertising an instance that is already gone.
+  shutdown: graceful
+
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+  flyway:
+    # Belt and braces for a cold database. Note this is NOT sufficient on its own: with
+    # `ddl-auto: validate` Hibernate's EntityManagerFactory opens a connection during context
+    # refresh before Flyway gets there, so an absent Postgres still fails the boot. What actually
+    # recovers the service is `restart: unless-stopped` in docker-compose.yml - the container exits,
+    # is restarted, and succeeds once Postgres is accepting connections. That is the same
+    # crash-until-dependency-ready behaviour Kubernetes relies on, and unlike a Compose health gate
+    # it works identically under Docker and Podman.
+    connect-retries: 10
+    connect-retries-interval: 3s
+  kafka:
+    listener:
+      # A consumer whose topic does not exist yet retries instead of killing the context. Topics
+      # are auto-created by the first producer, which may be a service that starts after this one.
+      missing-topics-fatal: false
+    producer:
+      # Ride out a broker restart or a partition rebalance instead of surfacing it to the caller.
+      retries: 3
+      properties:
+        delivery.timeout.ms: 30000
+  cloud:
+    loadbalancer:
+      retry:
+        # Retry on the *next* instance rather than returning 500 when Eureka hands out an instance
+        # that has just gone away - the normal case during a rolling deploy of one service.
+        enabled: true
 

@@ -33,6 +33,19 @@ spring:
         spring.json.value.default.type: com.uberlite.common.events.TripEvent
         # Narrower than "*": only the shared event package is trusted.
         spring.json.trusted.packages: com.uberlite.common.events
+
+# Readiness gates traffic on the datastore this service cannot serve without. Only `readinessState`
+# is in common's uberlite-defaults.yml: Actuator refuses to start when a health group names a
+# contributor that does not exist, so the datastore member is declared by the module that has one.
+management:
+  endpoint:
+    health:
+      group:
+        readiness:
+          include:
+            - readinessState
+            - db
+
 ---
 spring:
   config:

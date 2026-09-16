@@ -13,6 +13,18 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
 
+# Readiness gates traffic on the datastore this service cannot serve without. Only `readinessState`
+# is in common's uberlite-defaults.yml: Actuator refuses to start when a health group names a
+# contributor that does not exist, so the datastore member is declared by the module that has one.
+management:
+  endpoint:
+    health:
+      group:
+        readiness:
+          include:
+            - readinessState
+            - db
+
 ---
 spring:
   config:
