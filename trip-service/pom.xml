@@ -58,6 +58,14 @@
             <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
         </dependency>
 
+        <!-- Spring Boot 4 moved auto-configuration into per-technology modules: flyway-core on
+             its own gives you the library but no FlywayAutoConfiguration, so spring.flyway.* is
+             silently ignored and migrations never run. The symptom is Hibernate reporting
+             "Schema validation: missing table", which points at the wrong thing entirely. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-flyway</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-core</artifactId>
