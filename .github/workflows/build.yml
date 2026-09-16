@@ -27,8 +27,13 @@ jobs:
       - name: Build and test
         run: ./mvnw -B clean install
 
+      # Also guards the two rules that keep services independently deployable: no
+      # service-to-service depends_on, and every container HEALTHCHECK probes liveness.
       - name: Check config consistency across yml / Dockerfile / compose / gateway routes
         run: python3 scripts/check-config-consistency.py
+
+      - name: Check Dockerfiles match the template
+        run: python3 scripts/generate-dockerfiles.py --check
 
       - name: Upload surefire reports
         if: failure()
@@ -48,20 +53,25 @@ jobs:
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
 
-      # --wait blocks until every container reports healthy, which works because each image
-      # declares a HEALTHCHECK against /actuator/health.
+      # `--profile all` because the default profile is the platform only - the inner-loop
+      # default for developers. --wait blocks until every container reports healthy; that is the
+      # liveness probe, so it means "every JVM is serving", and demo.sh then waits for the
+      # registry and downstreams via /health/aggregate.
       - name: Bring the stack up
-        run: docker compose up --build --detach --wait
+        run: docker compose --profile all up --build --detach --wait
 
       - name: Run the end-to-end demo
         run: ./scripts/demo.sh
 
+      # smoke.sh first: it names the failing service and which of its three probes is red,
+      # which is otherwise buried in 14 services' worth of interleaved logs.
       - name: Dump container state on failure
         if: failure()
         run: |
-          docker compose ps
-          docker compose logs --tail 200
+          ./scripts/smoke.sh || true
+          docker compose --profile all ps
+          docker compose --profile all logs --tail 200
 
       - name: Tear down
         if: always()
-        run: docker compose down -v
+        run: docker compose --profile all down -v
