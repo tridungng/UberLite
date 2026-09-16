@@ -54,8 +54,7 @@ class ApiGatewayRoutesTest {
                 .as("routes did not load - check the spring.cloud.gateway.server.webflux prefix")
                 .isNotNull()
                 .isNotEmpty();
-        assertThat(routes.stream().map(Route::getId))
-                .containsExactlyInAnyOrderElementsOf(EXPECTED_ROUTE_IDS);
+        assertThat(routes.stream().map(Route::getId)).containsExactlyInAnyOrderElementsOf(EXPECTED_ROUTE_IDS);
     }
 
     @Test
@@ -63,8 +62,9 @@ class ApiGatewayRoutesTest {
         Map<String, String> uris = routeLocator.getRoutes().collectList().block().stream()
                 .collect(Collectors.toMap(Route::getId, route -> route.getUri().toString()));
 
-        assertThat(uris).allSatisfy((id, uri) -> assertThat(uri)
-                .as("route '%s' must use lb:// so an instance can move without a gateway restart", id)
-                .isEqualTo("lb://" + id));
+        assertThat(uris)
+                .allSatisfy((id, uri) -> assertThat(uri)
+                        .as("route '%s' must use lb:// so an instance can move without a gateway restart", id)
+                        .isEqualTo("lb://" + id));
     }
 }

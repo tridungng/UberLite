@@ -41,15 +41,17 @@ class PriceEstimationIntegrationTest {
     private static final String PICKUP_CELL = H3Util.latLngToCell(37.7749, -122.4194);
 
     private static final String REQUEST_BODY = """
-            {
-              "riderId": "rider-1",
-              "riderTripCount": 0,
-              "pickup":  {"lat": 37.7749, "lon": -122.4194},
-              "dropoff": {"lat": 37.8044, "lon": -122.2712}
-            }
-            """;
+        {
+          "riderId": "rider-1",
+          "riderTripCount": 0,
+          "pickup":  {"lat": 37.7749, "lon": -122.4194},
+          "dropoff": {"lat": 37.8044, "lon": -122.2712}
+        }
+        """;
 
-    @Autowired private WebApplicationContext context;
+    @Autowired
+    private WebApplicationContext context;
+
     private MockMvc mockMvc;
 
     @AfterAll
@@ -84,7 +86,8 @@ class PriceEstimationIntegrationTest {
         STUBS.reset();
         STUBS.stub("/route/estimate", Stub.okJson("{\"straightDistanceKm\":10.0,\"detourFactor\":1.1}"))
                 .stub("/time/estimate", Stub.okJson("{\"minutes\":20.0}"))
-                .stub("/surge/" + PICKUP_CELL,
+                .stub(
+                        "/surge/" + PICKUP_CELL,
                         Stub.okJson("{\"h3Cell\":\"" + PICKUP_CELL + "\",\"multiplier\":1.5,\"updatedAtMs\":1}"))
                 .stub("/tax/us-ca", Stub.okJson("{\"regionId\":\"us-ca\",\"rate\":0.08}"))
                 .stub("/tolls/estimate", Stub.okJson("{\"amount\":2.5}"))
@@ -206,4 +209,3 @@ class PriceEstimationIntegrationTest {
         assertThat(STUBS.requests()).isEmpty();
     }
 }
-

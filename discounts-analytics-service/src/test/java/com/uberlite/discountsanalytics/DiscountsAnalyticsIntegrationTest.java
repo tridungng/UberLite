@@ -28,12 +28,13 @@ import static org.mockito.Mockito.when;
  * re-running the batch is genuinely idempotent rather than merely intended to be.
  */
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest(properties = {
-        "eureka.client.enabled=false",
-        "spring.cloud.discovery.enabled=false",
-        // Never fires during the test; the batch is invoked directly instead.
-        "discounts-analytics.cron=0 0 2 29 2 ?"
-})
+@SpringBootTest(
+        properties = {
+            "eureka.client.enabled=false",
+            "spring.cloud.discovery.enabled=false",
+            // Never fires during the test; the batch is invoked directly instead.
+            "discounts-analytics.cron=0 0 2 29 2 ?"
+        })
 class DiscountsAnalyticsIntegrationTest {
 
     @Container
@@ -65,9 +66,8 @@ class DiscountsAnalyticsIntegrationTest {
 
     @Test
     void writesCandidatesAndRevokesThemOnceTheRiderCrossesTheThreshold() {
-        when(tripCounts.completedTripCounts()).thenReturn(List.of(
-                new RiderTripCountDto("rider-new", 1),
-                new RiderTripCountDto("rider-regular", 9)));
+        when(tripCounts.completedTripCounts())
+                .thenReturn(List.of(new RiderTripCountDto("rider-new", 1), new RiderTripCountDto("rider-regular", 9)));
 
         flagger.flagCandidates();
 
@@ -76,9 +76,8 @@ class DiscountsAnalyticsIntegrationTest {
                 .containsExactly("rider-new");
 
         // The next night, that rider has taken their third trip.
-        when(tripCounts.completedTripCounts()).thenReturn(List.of(
-                new RiderTripCountDto("rider-new", 3),
-                new RiderTripCountDto("rider-regular", 9)));
+        when(tripCounts.completedTripCounts())
+                .thenReturn(List.of(new RiderTripCountDto("rider-new", 3), new RiderTripCountDto("rider-regular", 9)));
 
         flagger.flagCandidates();
 
@@ -87,8 +86,7 @@ class DiscountsAnalyticsIntegrationTest {
 
     @Test
     void reRunningTheBatchIsIdempotentRatherThanAccumulating() {
-        when(tripCounts.completedTripCounts())
-                .thenReturn(List.of(new RiderTripCountDto("rider-steady", 2)));
+        when(tripCounts.completedTripCounts()).thenReturn(List.of(new RiderTripCountDto("rider-steady", 2)));
 
         flagger.flagCandidates();
         flagger.flagCandidates();
@@ -99,4 +97,3 @@ class DiscountsAnalyticsIntegrationTest {
                 .containsExactly("rider-steady");
     }
 }
-
