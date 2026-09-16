@@ -42,11 +42,24 @@ k=3 retry budget on ghosts.
 
 ## Run
 
+The platform (`docker compose up -d` with no profile) is Eureka, the gateway, Kafka, Redis, Zipkin
+and the databases. This service needs `redis` on top of that, which Compose starts for you when you name the service.
+It declares no dependency on any other UberLite service, so it boots on its own and a call to a peer
+that is not running fails fast rather than blocking startup. See the root README, "Independent deployability".
+
 ```bash
-docker compose up -d discovery-server zipkin redis
+docker compose up -d driver-discovery-service          # in a container, with its dependencies
+# or, running it from source against the containerised platform:
+docker compose up -d
 ./mvnw -pl driver-discovery-service spring-boot:run
 ./mvnw -pl driver-discovery-service test
 ```
+
+| Probe | Meaning |
+|-------|---------|
+| `/actuator/health/liveness` | what the container `HEALTHCHECK` polls; a failure means restart |
+| `/actuator/health/readiness` | `readinessState` plus `redis` - safe to route traffic here |
+| `/actuator/health` | composite, including peers - informational, a `DOWN` here can just mean a dependency is missing |
 
 The integration test needs Docker (Testcontainers Redis) and self-skips when it is unavailable.
 

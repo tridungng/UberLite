@@ -118,9 +118,24 @@ so `StubServer` stands in. Its API is intentionally WireMock-shaped if that ever
 
 ## Running
 
+The platform (`docker compose up -d` with no profile) is Eureka, the gateway, Kafka, Redis, Zipkin
+and the databases. This service needs nothing on top of that. It declares no dependency on any other UberLite
+service, so it boots on its own and a call to a peer that is not running fails fast rather than
+blocking startup. See the root README, "Independent deployability".
+
 ```bash
-mvn -pl matching-service spring-boot:run
+docker compose up -d matching-service          # in a container, with its dependencies
+# or, running it from source against the containerised platform:
+docker compose up -d
+./mvnw -pl matching-service spring-boot:run
+./mvnw -pl matching-service test
 ```
+
+| Probe | Meaning |
+|-------|---------|
+| `/actuator/health/liveness` | what the container `HEALTHCHECK` polls; a failure means restart |
+| `/actuator/health/readiness` | `readinessState` - safe to route traffic here |
+| `/actuator/health` | composite, including peers - informational, a `DOWN` here can just mean a dependency is missing |
 
 
 

@@ -73,3 +73,24 @@ mvn spring-boot:run -pl surge-pricing-service   # Run locally
   - Fallback when driver-discovery unavailable
 
 All tests: **17 passing**
+
+## Run
+
+The platform (`docker compose up -d` with no profile) is Eureka, the gateway, Kafka, Redis, Zipkin
+and the databases. This service needs `redis`, which Compose starts for you when you name the service. It declares no dependency on any other UberLite
+service, so it boots on its own and a call to a peer that is not running fails fast rather than
+blocking startup. See the root README, "Independent deployability".
+
+```bash
+docker compose up -d surge-pricing-service          # in a container, with its dependencies
+# or, running it from source against the containerised platform:
+docker compose up -d
+./mvnw -pl surge-pricing-service spring-boot:run
+./mvnw -pl surge-pricing-service test
+```
+
+| Probe | Meaning |
+|-------|---------|
+| `/actuator/health/liveness` | what the container `HEALTHCHECK` polls; a failure means restart |
+| `/actuator/health/readiness` | `readinessState` plus `redis` - safe to route traffic here |
+| `/actuator/health` | composite, including peers - informational, a `DOWN` here can just mean a dependency is missing |

@@ -47,18 +47,35 @@ required to run the stack — but it fails fast, and much faster, if something i
 ### 2. Bring the whole stack up
 
 ```bash
-docker compose up --build
+docker compose --profile all up --build
 ```
 
-First run takes a while: every image compiles the Maven reactor from scratch. Later runs reuse the
-layer cache.
+First run takes a while: every image compiles the Maven reactor. Later runs reuse the layer cache
+and a shared `~/.m2` build cache, so a one-line code change rebuilds one service in seconds.
 
-Compose starts things in dependency order and waits on real health checks, so when the command
-settles every service is genuinely reachable rather than merely started. Watch progress with:
+Services start **in parallel**, not in a dependency chain — no service waits for another service
+(see [Independent deployability](#independent-deployability)). Watch progress with:
 
 ```bash
-docker compose ps          # STATUS column should read "healthy" for every service
+docker compose ps           # STATUS "healthy" = that JVM is serving
+./scripts/smoke.sh          # one line per service: LIVE / READY / HEALTH
 ```
+
+### 2b. Or bring up only what you need
+
+The default (no profile) is the platform on its own, which is the fast inner loop:
+
+```bash
+docker compose up -d                                  # Eureka, gateway, Kafka, Redis, Zipkin, DBs
+docker compose up -d trip-service                     # + one service and its database
+docker compose up -d --no-deps --build trip-service   # rebuild just that one, leave the rest alone
+docker compose --profile core up -d                   # the nine marketplace services
+docker compose --profile analytics up -d              # the three background analytics services
+```
+
+Any service can run alone. Calls to peers that are not up fail fast with
+`No instances available for <service>` instead of hanging or preventing startup — see
+[Independent deployability](#independent-deployability).
 
 ### 3. Run the end-to-end demo
 
@@ -106,16 +123,75 @@ docker compose down -v       # also drop the Postgres volumes for a truly clean 
 
 ### Running a single service outside Docker
 
-Every module is independently runnable. Start the infrastructure it needs, then:
+Every module is independently runnable. Start the platform, then the one service:
 
 ```bash
-docker compose up -d discovery-server zipkin redis      # whatever that service depends on
+docker compose up -d                          # Eureka, gateway, Kafka, Redis, Zipkin, databases
 ./mvnw -pl route-service spring-boot:run
 ```
 
 Without the `docker` profile a service defaults to `localhost` for Eureka, Redis, Kafka and its
 database, and the host ports published by Compose match those defaults — so a locally run service
 drops into a partially containerised stack without extra configuration.
+
+## Independent deployability
+
+Every service is a unit of deployment on its own: its own image, its own database, its own
+lifecycle. Three rules keep that true, and together they are why a failed `docker compose up` now
+names the service that is actually broken.
+
+**1. No service-to-service `depends_on`, and no `service_healthy` gates.** Every dependency in
+`docker-compose.yml` is `service_started`. The Kafka and Eureka clients reconnect on their own, so
+they need no gate at all. A database *is* a real startup dependency - Hibernate validates the schema
+during context refresh - and that is handled by the restart policy rather than by Compose: the
+container exits, is restarted, and succeeds once Postgres accepts connections.
+
+Health gates were removed because they are not portable. Podman does not execute Compose-declared
+health checks, so `condition: service_healthy` never opens there and the dependent service is never
+started - the failure mode is six services *missing* from `docker compose ps`, which looks nothing
+like the database problem it actually is. Crash-until-the-dependency-is-ready is the same contract
+Kubernetes runs on and behaves identically on every runtime.
+
+Boot order between services is not something you can configure your way out of: in production the
+scheduler starts pods in whatever order it likes, so a service that cannot boot without its peers is
+broken there too. The previous five-deep chain (`trip-service` -> `price-estimation-service` ->
+`surge-pricing-service` -> `driver-discovery-service` -> `redis`) serialised startup and, worse,
+reported the *blocked* services as the failure instead of the broken one.
+
+**2. Containers are probed for liveness, not for the health of the world.** Each image's
+`HEALTHCHECK` polls `/actuator/health/liveness`, which answers one question: *should this process be
+restarted?* That is the only remedy a container runtime has, and restarting a service never fixes a
+sick Postgres or a late Eureka.
+
+| Endpoint | Includes | Used by |
+|----------|----------|---------|
+| `/actuator/health/liveness` | `livenessState` | container `HEALTHCHECK` - a failure means restart |
+| `/actuator/health/readiness` | `readinessState` + this service's own datastore | traffic gating. The `db`/`redis` member is declared per module, because Actuator refuses to start when a group names a contributor the service does not have |
+| `/actuator/health` | everything, including Eureka and downstream indicators | humans and `/health/aggregate` - informational |
+
+A service whose LIVE and READY are `UP` while its composite HEALTH is `DOWN` is *fine*; something it
+talks to is not. `./scripts/smoke.sh` prints all three side by side for exactly this reason.
+
+**3. A missing dependency is a runtime error, not a startup error.** Configured once in
+`common/src/main/resources/uberlite-defaults.yml`: `missing-topics-fatal: false` so a consumer
+outlives an absent topic, producer retries so a broker restart is not surfaced to the caller,
+LoadBalancer retry so a stale Eureka entry is retried against the next instance, and graceful
+shutdown (paired with `stop_grace_period: 30s`) so a rolling restart drains in-flight requests and
+deregisters instead of being SIGKILLed mid-request.
+
+The visible consequence: start `price-estimation-service` on its own and it boots and serves
+`/actuator/health`; call it and you get a fast `No instances available for route-service` instead of
+a hang. That is the same failure mode its unit tests already cover with `StubServer`.
+
+### Debugging a stack that did not come up
+
+```bash
+./scripts/smoke.sh                                   # which service, and which of the three probes
+docker compose ps                                    # Exited? restarting? unhealthy?
+docker compose logs --tail=100 <service>             # the stack trace
+curl -s localhost:<port>/actuator/health | jq        # which component is DOWN
+docker inspect --format '{{json .State.Health}}' <container> | jq   # the probe's own output
+```
 
 ## Service Inventory
 
@@ -412,22 +488,39 @@ mvn clean install
 
 ### Docker images
 
-All 14 Dockerfiles are generated from one template and are identical apart from the module name and
-port:
+All 14 Dockerfiles are **generated** from one template in
+`scripts/generate-dockerfiles.py` and differ only in the module name and port. Edit the template and
+regenerate; do not hand-edit a `Dockerfile`:
 
-1. **Build stage** — `maven:3.9-eclipse-temurin-25`, compiles the module with `-pl <module> -am`.
-   The whole repo is copied in because the root pom declares every module, so Maven's reactor needs
-   them all present even for a single-module build.
-2. **Runtime stage** — `eclipse-temurin:25-jre`, plus `curl` for the healthcheck. Runs as the
-   unprivileged `uberlite` user, honours `JAVA_OPTS`, and declares a `HEALTHCHECK` against
-   `/actuator/health` so Compose's `condition: service_healthy` has something real to wait on.
+```bash
+python3 scripts/generate-dockerfiles.py          # rewrite all 14
+python3 scripts/generate-dockerfiles.py --check  # CI: fail if one is stale
+```
+
+The port is read from the module's own `application.yml`, so `EXPOSE` and the `HEALTHCHECK` cannot
+drift from `server.port`.
+
+1. **Build stage** — `maven:3.9-eclipse-temurin-25`, compiles with `-pl <module> -am`. The whole
+   repo is the context because the root pom's reactor needs every module present even for a
+   single-module build. A BuildKit cache mount on `/root/.m2` is shared across all 14 image builds,
+   so the dependency tree is downloaded once and never lands in a layer.
+2. **Layer extraction** — `java -Djarmode=tools … extract --layers` splits the fat jar into
+   dependencies / loader / snapshot-dependencies / application. Dependencies change rarely and
+   application code changes every commit, so a code-only rebuild pushes a few hundred KB instead of
+   the whole ~60 MB jar.
+3. **Runtime stage** — `eclipse-temurin:25-jre` plus `curl` for the probe. Runs as numeric
+   `10001:10001` (no `runAsNonRoot` surprises on Kubernetes), sets `JDK_JAVA_OPTIONS` rather than
+   wrapping the JVM in `sh -c` — so the JVM is PID 1 and receives `SIGTERM` directly, which is what
+   makes graceful shutdown actually run — and declares a `HEALTHCHECK` against
+   `/actuator/health/liveness`.
 
 The Java version is set once in the root `pom.xml` (`<java.version>25</java.version>`) and must
 match the base image tags. Keep the three in sync when upgrading.
 
-Build a single service image:
+Build and run a single service image, with no other UberLite image involved:
 ```bash
-docker build -t uberlite/<service-name>:latest -f <service-name>/Dockerfile .
+docker build -t uberlite/route-service:latest -f route-service/Dockerfile .
+docker run --rm -p 8087:8087 uberlite/route-service:latest
 ```
 
 ## Key Design Decisions
@@ -447,15 +540,17 @@ docker build -t uberlite/<service-name>:latest -f <service-name>/Dockerfile .
 Every service exposes the same endpoints, because they are configured once rather than per module:
 
 ```
-GET /actuator/health        # composite health: db, redis, kafka, Eureka registration
-GET /actuator/info          # service name, JVM, OS
-GET /actuator/metrics       # Micrometer metrics
-GET /actuator/prometheus    # the same, in Prometheus scrape format
+GET /actuator/health             # composite: db, redis, kafka, Eureka registration
+GET /actuator/health/liveness    # "should this process be restarted?" - the container HEALTHCHECK
+GET /actuator/health/readiness   # "should traffic be routed here?" - readinessState + own datastore
+GET /actuator/info               # service name, JVM, OS
+GET /actuator/metrics            # Micrometer metrics
+GET /actuator/prometheus         # the same, in Prometheus scrape format
 ```
 
-`/actuator/health` is also what each container's `HEALTHCHECK` polls, which is what makes
-`depends_on: condition: service_healthy` in `docker-compose.yml` mean "genuinely callable" rather
-than "process has started".
+The split matters: the container probes **liveness**, so a dependency blip can never get a healthy
+service restarted or make Compose blame the wrong container. See
+[Independent deployability](#independent-deployability).
 
 ### Aggregate view
 
@@ -487,12 +582,15 @@ yours.
 
 ## Troubleshooting
 
-**`docker compose up` hangs with services stuck in `starting`?**
-- `docker compose ps` shows which one. A service that never turns `healthy` blocks everything
-  declared `depends_on` it.
-- `docker compose logs -f <service>` for the reason. The healthcheck is `/actuator/health`, so the
-  service is reporting a component down — usually its database or Kafka.
-- On a cold cache the first build is slow; `start_period` is 120s per service before failures count.
+**A service did not come up and you cannot tell which?**
+- `./scripts/smoke.sh` — one line per service with LIVE / READY / HEALTH. Services no longer depend
+  on each other, so the red line *is* the broken service, not a victim of a boot-order chain.
+- `docker compose ps`, then `docker compose logs --tail=100 <service>` for the stack trace.
+- `curl -s localhost:<port>/actuator/health | jq` names the component that is `DOWN`
+  (`show-details: always` is set for all services).
+- LIVE/READY `UP` but HEALTH `DOWN` is not a fault in that service — a dependency is missing.
+- On a cold cache the first build is slow; `start_period` is 60s per container before a failed probe
+  counts against it.
 
 **A service isn't in the Eureka dashboard?**
 - Check it has `spring.application.name` set. Without it the service registers as `UNKNOWN` and no
@@ -536,7 +634,9 @@ yours.
 | Script | Purpose |
 |--------|---------|
 | `scripts/demo.sh` | Full happy-path trip lifecycle against a running stack. Prints every request/response, exits non-zero on the first unexpected status code. |
+| `scripts/smoke.sh` | One line per service: liveness, readiness and composite health, from the host. Exits with the number of services that are not ready. |
 | `scripts/check-config-consistency.py` | Cross-checks `server.port` and `spring.application.name` against each Dockerfile, `docker-compose.yml` and the gateway route table. |
+| `scripts/generate-dockerfiles.py` | Regenerates all 14 Dockerfiles from one template. `--check` fails if any is stale, for CI. |
 
 `server.port` and `spring.application.name` are each duplicated in four places, and drift between
 them is silent — a service with the wrong name registers as `UNKNOWN` and callers only fail at
@@ -551,8 +651,11 @@ runtime. No Java test can see across all four files, so the consistency check ru
   controller too, not just from the consuming Feign client
 - Publish domain events to Kafka for async subscribers; topic names come from `common`
 - Every module carries its own `README.md`
-- Ensure `mvn clean install` and `python3 scripts/check-config-consistency.py` both pass before
-  pushing
+- Ensure `mvn clean install`, `python3 scripts/check-config-consistency.py` and
+  `python3 scripts/generate-dockerfiles.py --check` all pass before pushing
+- Never add `depends_on` from one application service to another, and never point a container
+  `HEALTHCHECK` at the composite `/actuator/health` — see
+  [Independent deployability](#independent-deployability)
 
 ## References
 

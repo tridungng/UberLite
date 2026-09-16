@@ -82,10 +82,25 @@ best effort: if Surge Pricing is down the trip still succeeds and the multiplier
 
 ## Running and testing
 
+The platform (`docker compose up -d` with no profile) is Eureka, the gateway, Kafka, Redis, Zipkin
+and the databases. This service needs `trip-service-postgres` and `kafka`, which Compose starts for you when you name
+the service. It declares no dependency on any other UberLite
+service, so it boots on its own and a call to a peer that is not running fails fast rather than
+blocking startup. See the root README, "Independent deployability".
+
 ```bash
-mvn -pl trip-service spring-boot:run     # needs Postgres on :5433, Kafka on :9092, Eureka on :8761
-mvn -pl trip-service test
+docker compose up -d trip-service          # in a container, with its dependencies
+# or, running it from source against the containerised platform:
+docker compose up -d
+./mvnw -pl trip-service spring-boot:run
+./mvnw -pl trip-service test
 ```
+
+| Probe | Meaning |
+|-------|---------|
+| `/actuator/health/liveness` | what the container `HEALTHCHECK` polls; a failure means restart |
+| `/actuator/health/readiness` | `readinessState` plus `db` - safe to route traffic here |
+| `/actuator/health` | composite, including peers - informational, a `DOWN` here can just mean a dependency is missing |
 
 Tests use embedded Kafka, an in-memory schema, and `StubServer` (from `common`'s test-jar) to stand
 up the three downstream services over real HTTP, so the Feign clients' URLs, verbs and JSON codecs
@@ -96,7 +111,7 @@ are genuinely exercised.
 Boot everything, then wait for all services to appear in Eureka at <http://localhost:8761>:
 
 ```bash
-docker-compose up -d
+docker compose --profile all up -d
 docker-compose logs -f trip-service   # wait for "Started TripServiceApplication"
 ```
 

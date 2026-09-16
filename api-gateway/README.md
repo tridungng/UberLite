@@ -35,9 +35,22 @@ healthy gateway because an unrelated analytics service was still booting.
 
 ## Run
 
+The platform (`docker compose up -d` with no profile) is Eureka, the gateway, Kafka, Redis, Zipkin
+and the databases. This service needs nothing on top of that, and declares no dependency on
+any other UberLite service - it boots on its own, and a call to a peer that is not running fails
+fast rather than blocking startup. See the root README, "Independent deployability".
+
 ```bash
-docker compose up -d discovery-server zipkin
+docker compose up -d api-gateway          # in a container, with its dependencies
+# or, running it from source against the containerised platform:
+docker compose up -d
 ./mvnw -pl api-gateway spring-boot:run
 ./mvnw -pl api-gateway test
 ```
+
+| Probe | Meaning |
+|-------|---------|
+| `/actuator/health/liveness` | what the container `HEALTHCHECK` polls; a failure means restart |
+| `/actuator/health/readiness` | `readinessState` - safe to route traffic here |
+| `/actuator/health` | composite, including peers - informational, a `DOWN` here can just mean a dependency is missing |
 

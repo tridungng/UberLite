@@ -49,12 +49,24 @@ pricing:
 
 ## Run
 
+The platform (`docker compose up -d` with no profile) is Eureka, the gateway, Kafka, Redis, Zipkin
+and the databases. This service needs nothing on top of that, and declares no dependency on
+any other UberLite service - it boots on its own, and a call to a peer that is not running fails
+fast rather than blocking startup. See the root README, "Independent deployability".
+
 ```bash
-docker compose up -d discovery-server zipkin route-service time-estimation-service \
-  surge-pricing-service tax-tolls-service discounts-promotions-service
+docker compose up -d price-estimation-service          # in a container, with its dependencies
+# or, running it from source against the containerised platform:
+docker compose up -d
 ./mvnw -pl price-estimation-service spring-boot:run
 ./mvnw -pl price-estimation-service test
 ```
+
+| Probe | Meaning |
+|-------|---------|
+| `/actuator/health/liveness` | what the container `HEALTHCHECK` polls; a failure means restart |
+| `/actuator/health/readiness` | `readinessState` - safe to route traffic here |
+| `/actuator/health` | composite, including peers - informational, a `DOWN` here can just mean a dependency is missing |
 
 `PriceEstimationIntegrationTest` runs the real Feign clients against `StubServer` from `common`'s
 test-jar, so a `@FeignClient` path that disagrees with the downstream route fails the build rather
