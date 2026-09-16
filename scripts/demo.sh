@@ -6,6 +6,7 @@
 # request and response. Exits non-zero on the first unexpected status code, so it doubles as a smoke
 # test in CI.
 #
+#   docker compose --profile all up -d     # the demo needs every service running
 #   ./scripts/demo.sh
 #   BASE_URL=http://localhost:8083 ./scripts/demo.sh   # bypass the gateway, hit trip-service direct
 #
@@ -17,7 +18,9 @@ set -Eeuo pipefail
 BASE_URL="${BASE_URL:-http://localhost:8080}"
 ZIPKIN_URL="${ZIPKIN_URL:-http://localhost:9411}"
 EUREKA_URL="${EUREKA_URL:-http://localhost:8761}"
-# Generous: on a cold `docker compose up --build` the last service can take a while to register.
+# Generous: on a cold `docker compose --profile all up --build` the last service can take a
+# while to register. Services now boot in parallel rather than in a chain, so this is bounded
+# by the slowest single service, not by the sum of the chain.
 READY_TIMEOUT_SECONDS="${READY_TIMEOUT_SECONDS:-300}"
 # Kafka-driven analytics are eventually consistent; poll rather than sleep-and-hope.
 EVENTUAL_TIMEOUT_SECONDS="${EVENTUAL_TIMEOUT_SECONDS:-60}"
@@ -126,7 +129,7 @@ wait_for_stack() {
   done
   printf '%s\n' "${RED}Last aggregate health report:${OFF}" >&2
   jq . /tmp/uberlite-demo-health 2>/dev/null >&2 || true
-  die "stack was not healthy within ${READY_TIMEOUT_SECONDS}s — check 'docker compose ps'"
+  die "stack was not healthy within ${READY_TIMEOUT_SECONDS}s — run ./scripts/smoke.sh to see which service"
 }
 
 # ------------------------------------------------------------------------------------------------
