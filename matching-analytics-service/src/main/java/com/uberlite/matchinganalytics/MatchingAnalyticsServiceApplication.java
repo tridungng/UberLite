@@ -8,7 +8,7 @@ import org.springframework.context.annotation.Import;
 @SpringBootApplication
 @Import(TripEventConsumerConfiguration.class)
 public class MatchingAnalyticsServiceApplication {
-    public static void main(String[] args) {
+    static void main(String[] args) {
         SpringApplication.run(MatchingAnalyticsServiceApplication.class, args);
     }
 }

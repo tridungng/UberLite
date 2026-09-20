@@ -8,7 +8,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 @SpringBootApplication
 @EnableConfigurationProperties(TimeEstimationProperties.class)
 public class TimeEstimationServiceApplication {
-    public static void main(String[] args) {
+    static void main(String[] args) {
         SpringApplication.run(TimeEstimationServiceApplication.class, args);
     }
 }

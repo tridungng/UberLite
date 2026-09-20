@@ -14,17 +14,17 @@ description rather than silently resolving it.
 - Package root per service: `com.uberlite.<servicename>` (e.g. `com.uberlite.tripservice`).
 - Layer packages, and no others. A package only appears when the service needs it, but when it
   appears it has this name:
-  - `.api` REST controllers and `@RestControllerAdvice`
-  - `.api.dto` request/response shapes used by this service only
-  - `.client` OpenFeign clients for calling other services
-  - `.config` `@ConfigurationProperties` and infrastructure `@Configuration`
-  - `.domain` business rules, domain services, domain exceptions — **never** `.service`
-  - `.messaging` Kafka consumers/producers — **not** `.kafka` or `.listener`
-  - `.repository` Spring Data repositories, with `@Entity` classes in `.repository.entity`
-- Entry point is `<ModuleName>ServiceApplication` with a `public static void main`, matching the
+    - `.api` REST controllers and `@RestControllerAdvice`
+    - `.api.dto` request/response shapes used by this service only
+    - `.client` OpenFeign clients for calling other services
+    - `.config` `@ConfigurationProperties` and infrastructure `@Configuration`
+    - `.domain` business rules, domain services, domain exceptions — **never** `.service`
+    - `.messaging` Kafka consumers/producers — **not** `.kafka` or `.listener`
+    - `.repository` Spring Data repositories, with `@Entity` classes in `.repository.entity`
+- Entry point is `<ModuleName>ServiceApplication` with a `static void main`, matching the
   module directory name. Don't add `@EnableDiscoveryClient` — the Eureka starter already does it.
-- DTOs shared between services live in `common` — never duplicate a DTO in a service module, and
-  **return the shared DTO from the producing controller too**. A controller that hand-rolls a `Map`
+- DTOs shared between services live in `common` — never duplicate a DTO in a service module, and **return the shared DTO
+  from the producing controller too**. A controller that hand-rolls a `Map`
   as its response body defeats the whole point: the caller still binds to the shared DTO and just
   gets nulls at runtime.
 - Magic numbers go in a `.config` `*Properties` class bound from `application.yml`, not inline in a

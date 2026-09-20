@@ -14,7 +14,7 @@ import java.time.Clock;
 @EnableConfigurationProperties(PromoBatchProperties.class)
 public class DiscountsAnalyticsServiceApplication {
 
-    public static void main(String[] args) {
+    static void main(String[] args) {
         SpringApplication.run(DiscountsAnalyticsServiceApplication.class, args);
     }
 

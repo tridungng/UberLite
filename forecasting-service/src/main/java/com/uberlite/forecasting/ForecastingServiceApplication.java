@@ -15,7 +15,7 @@ import java.time.Clock;
 @Import(TripEventConsumerConfiguration.class)
 public class ForecastingServiceApplication {
 
-    public static void main(String[] args) {
+    static void main(String[] args) {
         SpringApplication.run(ForecastingServiceApplication.class, args);
     }
 

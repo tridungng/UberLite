@@ -10,7 +10,7 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
 @EnableFeignClients
 @EnableConfigurationProperties(PricingProperties.class)
 public class PriceEstimationServiceApplication {
-    public static void main(String[] args) {
+    static void main(String[] args) {
         SpringApplication.run(PriceEstimationServiceApplication.class, args);
     }
 }

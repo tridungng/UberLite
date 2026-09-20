@@ -10,7 +10,7 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
 @EnableFeignClients
 @EnableConfigurationProperties(OrchestrationProperties.class)
 public class TripServiceApplication {
-    public static void main(String[] args) {
+    static void main(String[] args) {
         SpringApplication.run(TripServiceApplication.class, args);
     }
 }
